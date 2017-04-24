@@ -1,4 +1,4 @@
 #!/bin/sh
 
 cd /usr/local/src/sidecar_client/
-python sidecar_client.py sidecar_server 5678
+python sidecar_client.py 172.18.0.2 5678

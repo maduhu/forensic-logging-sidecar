@@ -66,7 +66,4 @@ if __name__ == '__main__':
 			print ('ERROR')
 			connectionSocket.close()
                         sys.stdout.flush()
-		except IOError:
-			print ('ERROR')
-			connectionSocket.close()
 	serverSocket.close()

@@ -2,10 +2,9 @@ from socket import *
 import sys
 import time
 
+
 Host=sys.argv[1]
 Port=int(sys.argv[2])
-
-
 start = 0
 
 while(True):
@@ -18,7 +17,5 @@ while(True):
 	print ('send message: '+ send_message)
 	sys.stdout.flush()
         sock.send(send_message)
-	print ('send message:', send_message)
-	sock.send(send_message)
 	sock.close()
 	time.sleep(5)
