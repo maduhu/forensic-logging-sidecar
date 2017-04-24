@@ -3,6 +3,7 @@
 from socket import *
 from datetime import datetime
 import os
+import sys
 
 SIZE_OF_BUFFER = 5
 
@@ -60,6 +61,11 @@ if __name__ == '__main__':
 				return_buffer = return_buffer + x + '\n'
 			print return_buffer
 			connectionSocket.close()
+                        sys.stdout.flush()
+		except IOError:
+			print ('ERROR')
+			connectionSocket.close()
+                        sys.stdout.flush()
 		except IOError:
 			print ('ERROR')
 			connectionSocket.close()
