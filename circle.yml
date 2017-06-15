@@ -1,0 +1,13 @@
+machine:
+  node:
+    version: 6.5.0
+
+test:
+  pre:
+    - mkdir -p ./test/results
+  override:
+    - set -o pipefail && npm -s run test:xunit > ./test/results/tape.xml
+    - npm -s run test:coverage-check
+  post:
+    - cp ./test/results/* $CIRCLE_TEST_REPORTS
+    - mv ./coverage $CIRCLE_ARTIFACTS

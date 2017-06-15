@@ -1,0 +1,42 @@
+{
+  "name": "forensic-logging-sidecar",
+  "version": "0.0.1",
+  "description": "Sidecar service to save forensic logs",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LevelOneProject/forensic-logging-sidecar.git"
+  },
+  "keywords": [
+    "sidecar",
+    "forensic",
+    "logging"
+  ],
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "npm run test:unit | faucet",
+    "pretest": "standard",
+    "test:unit": "tape 'test/unit/**/*.test.js'",
+    "test:xunit": "npm run test:unit | tap-xunit",
+    "test:coverage": "istanbul cover tape -- 'test/unit/**/*.test.js'",
+    "test:coverage-check": "npm run test:coverage && istanbul check-coverage"
+  },
+  "dependencies": {
+    "@leveloneproject/central-services-shared": "^0.3.0",
+    "bluebird": "3.5.0",
+    "rc": "^1.2.1",
+    "uuid4": "^1.0.0",
+    "ws": "3.0.0"
+  },
+  "devDependencies": {
+    "faucet": "0.0.1",
+    "istanbul": "0.4.5",
+    "pre-commit": "1.2.2",
+    "proxyquire": "^1.8.0",
+    "sinon": "2.3.4",
+    "standard": "10.0.2",
+    "tap-xunit": "1.7.0",
+    "tape": "4.6.3",
+    "tapes": "4.1.0"
+  }
+}
