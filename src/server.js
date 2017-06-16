@@ -10,7 +10,6 @@ const kmsConn = KmsConnection.create(Config.KMS)
 
 module.exports = kmsConn.connect()
   .then(() => kmsConn.register(sidecarId))
-  .catch(err => {
-    Logger.error(err)
-    throw err
+  .then(keys => {
+    Logger.info(`Got keys from KMS: batch - ${keys.batchKey}, row - ${keys.rowKey}`)
   })

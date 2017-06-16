@@ -16,7 +16,7 @@ Test('server test', serverTest => {
   serverTest.beforeEach(t => {
     sandbox = Sinon.sandbox.create()
     sandbox.stub(KmsConnection, 'create')
-    sandbox.stub(Logger, 'error')
+    sandbox.stub(Logger)
 
     oldKmsConfig = Config.KMS
     Config.KMS = kmsConfig
@@ -36,8 +36,9 @@ Test('server test', serverTest => {
       let connectStub = sandbox.stub()
       connectStub.returns(P.resolve())
 
+      let keys = { batchKey: 'batch', rowKey: 'row' }
       let registerStub = sandbox.stub()
-      registerStub.returns(P.resolve())
+      registerStub.returns(P.resolve(keys))
 
       KmsConnection.create.returns({ connect: connectStub, register: registerStub })
 
@@ -47,28 +48,11 @@ Test('server test', serverTest => {
         test.ok(KmsConnection.create.calledWith(kmsConfig))
         test.ok(connectStub.calledOnce)
         test.ok(registerStub.calledOnce)
+        test.ok(Logger.info.calledWith(`Got keys from KMS: batch - ${keys.batchKey}, row - ${keys.rowKey}`))
         test.end()
       })
     })
 
-    setupTest.test('log error on start', test => {
-      let error = new Error()
-
-      let connectStub = sandbox.stub()
-      connectStub.returns(P.reject(error))
-      KmsConnection.create.returns({ connect: connectStub })
-
-      require('../../src/server')
-      .then(() => {
-        test.fail('Expected exception to be thrown')
-        test.end()
-      })
-      .catch(e => {
-        test.equal(e, error)
-        test.ok(Logger.error.calledWith(error))
-        test.end()
-      })
-    })
     setupTest.end()
   })
 

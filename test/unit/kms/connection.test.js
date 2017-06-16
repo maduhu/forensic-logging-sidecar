@@ -46,50 +46,45 @@ Test('KMS connection', kmsConnTest => {
   })
 
   kmsConnTest.test('connect should', connectTest => {
-    connectTest.test('create websocket connection and attach listeners', test => {
+    connectTest.test('create websocket connection and resolve when open', test => {
       let settings = { URL: 'ws://test.com' }
-      let conn = KmsConnection.create(settings)
-
-      let onSpy = sandbox.spy()
-      wsStub.returns({ on: onSpy })
-
-      conn.connect()
-        .then(() => {
-          test.ok(wsStub.calledWithNew())
-          test.ok(wsStub.calledWith(settings.URL, sandbox.match({
-            perMessageDeflate: false
-          })))
-
-          test.equal(onSpy.callCount, 4)
-          test.ok(onSpy.calledWith('open'))
-          test.ok(onSpy.calledWith('close'))
-          test.ok(onSpy.calledWith('message'))
-          test.ok(onSpy.calledWith('error'))
-          test.end()
-        })
-    })
-
-    connectTest.test('handle open event', test => {
-      let conn = KmsConnection.create()
+      let kmsConnection = KmsConnection.create(settings)
 
       let wsEmitter = new EventEmitter()
       wsStub.returns(wsEmitter)
 
-      conn.connect()
+      wsEmitter.emit('open')
+
+      let connectPromise = kmsConnection.connect()
+      test.ok(wsStub.calledWithNew())
+      test.ok(wsStub.calledWith(settings.URL, sandbox.match({
+        perMessageDeflate: false
+      })))
+      test.notOk(kmsConnection._connected)
+
+      wsEmitter.emit('open')
+
+      connectPromise
         .then(() => {
-          wsEmitter.emit('open')
-          test.ok(Logger.info.calledWith('onOpen'))
+          test.ok(kmsConnection._connected)
+          test.equal(wsEmitter.listenerCount('open'), 1)
+          test.equal(wsEmitter.listenerCount('close'), 1)
+          test.equal(wsEmitter.listenerCount('error'), 1)
+          test.equal(wsEmitter.listenerCount('message'), 0)
           test.end()
         })
     })
 
     connectTest.test('handle close event', test => {
-      let conn = KmsConnection.create()
+      let kmsConnection = KmsConnection.create()
 
       let wsEmitter = new EventEmitter()
       wsStub.returns(wsEmitter)
 
-      conn.connect()
+      let connectPromise = kmsConnection.connect()
+      wsEmitter.emit('open')
+
+      connectPromise
         .then(() => {
           let code = 100
           let reason = 'reason'
@@ -99,29 +94,16 @@ Test('KMS connection', kmsConnTest => {
         })
     })
 
-    connectTest.test('handle message event', test => {
-      let conn = KmsConnection.create()
-
-      let wsEmitter = new EventEmitter()
-      wsStub.returns(wsEmitter)
-
-      conn.connect()
-        .then(() => {
-          let obj = { id: 'id' }
-          let message = JSON.stringify(obj)
-          wsEmitter.emit('message', message)
-          test.ok(Logger.info.calledWith(`onMessage: ${obj}`))
-          test.end()
-        })
-    })
-
     connectTest.test('handle error event', test => {
-      let conn = KmsConnection.create()
+      let kmsConnection = KmsConnection.create()
 
       let wsEmitter = new EventEmitter()
       wsStub.returns(wsEmitter)
 
-      conn.connect()
+      let connectPromise = kmsConnection.connect()
+      wsEmitter.emit('open')
+
+      connectPromise
         .then(() => {
           let err = new Error()
           wsEmitter.emit('error', err)
@@ -130,18 +112,150 @@ Test('KMS connection', kmsConnTest => {
         })
     })
 
+    connectTest.test('return immediately if already connected', test => {
+      let kmsConnection = KmsConnection.create()
+      kmsConnection._connected = true
+
+      kmsConnection.connect()
+        .then(() => {
+          test.notOk(wsStub.calledOnce)
+          test.end()
+        })
+    })
+
     connectTest.end()
   })
 
   kmsConnTest.test('register should', registerTest => {
-    registerTest.test('log sidecar id', test => {
+    registerTest.test('reject if not connected', test => {
       let conn = KmsConnection.create()
 
-      let sidecarId = 'id'
-      conn.register(sidecarId)
+      conn.register('id')
+        .then(() => {
+          test.fail('Should have thrown error')
+          test.end()
+        })
+        .catch(err => {
+          test.equal(err.message, 'You must connect before registering')
+          test.end()
+        })
+    })
 
-      test.ok(Logger.info.calledWith(sidecarId))
-      test.end()
+    registerTest.test('register with KMS and return keys', test => {
+      let wsEmitter = new EventEmitter()
+      wsEmitter.send = sandbox.stub()
+
+      let conn = KmsConnection.create()
+      conn._connected = true
+      conn._websocket = wsEmitter
+
+      let sidecarId = 'sidecar1'
+      let registerMessageId = `register-${sidecarId}`
+      let registerRequest = { jsonrpc: '2.0', id: registerMessageId, method: 'register', params: { id: sidecarId, serviceName: 'test' } }
+      let registerResponse = { jsonrpc: '2.0', id: registerMessageId, result: { id: sidecarId, batchKey: 'batchKey', rowKey: 'rowKey' } }
+
+      let registerPromise = conn.register(sidecarId)
+
+      let messageData = JSON.stringify(registerResponse)
+      wsEmitter.emit('message', messageData)
+
+      registerPromise
+        .then(keys => {
+          test.ok(Logger.info.calledWith(`Received message during registration procees: ${messageData}`))
+          test.ok(wsEmitter.send.calledWith(JSON.stringify(registerRequest)))
+          test.equal(keys.batchKey, registerResponse.result.batchKey)
+          test.equal(keys.rowKey, registerResponse.result.rowKey)
+          test.end()
+        })
+    })
+
+    registerTest.test('throw error if a non-register message received', test => {
+      let wsEmitter = new EventEmitter()
+      wsEmitter.send = sandbox.stub()
+
+      let conn = KmsConnection.create()
+      conn._connected = true
+      conn._websocket = wsEmitter
+
+      let sidecarId = 'sidecar1'
+      let registerResponse = { jsonrpc: '2.0', id: 'non-register', result: { id: sidecarId, batchKey: 'batchKey', rowKey: 'rowKey' } }
+
+      let registerPromise = conn.register(sidecarId)
+
+      let messageData = JSON.stringify(registerResponse)
+      wsEmitter.emit('message', messageData)
+
+      registerPromise
+        .then(() => {
+          test.fail('Should have thrown error')
+          test.end()
+        })
+        .catch(err => {
+          test.ok(Logger.error.calledWith(`Received non-register message from KMS during registration process: ${messageData}`))
+          test.equal(err.message, 'Error during KMS registration process')
+          test.end()
+        })
+    })
+
+    registerTest.test('throw error if a register message for a different sidecar received', test => {
+      let wsEmitter = new EventEmitter()
+      wsEmitter.send = sandbox.stub()
+
+      let conn = KmsConnection.create()
+      conn._connected = true
+      conn._websocket = wsEmitter
+
+      let sidecarId = 'sidecar1'
+      let registerMessageId = `register-${sidecarId}`
+      let registerResponse = { jsonrpc: '2.0', id: registerMessageId, result: { id: 'sidecar2', batchKey: 'batchKey', rowKey: 'rowKey' } }
+
+      let registerPromise = conn.register(sidecarId)
+
+      let messageData = JSON.stringify(registerResponse)
+      wsEmitter.emit('message', messageData)
+
+      registerPromise
+        .then(() => {
+          test.fail('Should have thrown error')
+          test.end()
+        })
+        .catch(err => {
+          test.ok(Logger.error.calledWith(`Received register message for different sidecar from KMS during registration process: ${messageData}`))
+          test.equal(err.message, 'Error during KMS registration process')
+          test.end()
+        })
+    })
+
+    registerTest.test('switch message handling back to default handler after done registering', test => {
+      let wsEmitter = new EventEmitter()
+      wsEmitter.send = sandbox.stub()
+
+      let conn = KmsConnection.create()
+      conn._connected = true
+      conn._websocket = wsEmitter
+
+      let sidecarId = 'sidecar1'
+      let registerMessageId = `register-${sidecarId}`
+      let registerResponse = { jsonrpc: '2.0', id: registerMessageId, result: { id: sidecarId, batchKey: 'batchKey', rowKey: 'rowKey' } }
+
+      let registerPromise = conn.register(sidecarId)
+
+      let messageData = JSON.stringify(registerResponse)
+      wsEmitter.emit('message', messageData)
+
+      registerPromise
+        .then(keys => {
+          test.ok(Logger.info.calledWith(`Received message during registration procees: ${messageData}`))
+          test.notOk(Logger.info.calledWith(`onMessage: ${messageData}`))
+
+          let messageData2 = 'new message'
+          wsEmitter.emit('message', messageData2)
+
+          test.ok(Logger.info.calledWith(`onMessage: ${messageData2}`))
+          test.notOk(Logger.info.calledWith(`Received message during registration procees: ${messageData2}`))
+
+          test.end()
+        })
     })
 
     registerTest.end()
