@@ -6,20 +6,25 @@ const Sinon = require('sinon')
 const P = require('bluebird')
 const Logger = require('@leveloneproject/central-services-shared').Logger
 const Config = require(`${src}/lib/config`)
-const KmsConnection = require(`${src}/kms/connection`)
+const Sidecar = require(`${src}/sidecar`)
 
 Test('server test', serverTest => {
   let sandbox
+  let oldService
   let oldKmsConfig
+  let service = 'MyService'
   let kmsConfig = { 'URL': 'ws://test.com' }
 
   serverTest.beforeEach(t => {
     sandbox = Sinon.sandbox.create()
-    sandbox.stub(KmsConnection, 'create')
+    sandbox.stub(Sidecar, 'create')
     sandbox.stub(Logger)
 
     oldKmsConfig = Config.KMS
+    oldService = Config.SERVICE
+
     Config.KMS = kmsConfig
+    Config.SERVICE = service
 
     t.end()
   })
@@ -28,27 +33,46 @@ Test('server test', serverTest => {
     delete require.cache[require.resolve('../../src/server')]
     sandbox.restore()
     Config.KMS = oldKmsConfig
+    Config.SERVICE = oldService
     t.end()
   })
 
   serverTest.test('setup should', setupTest => {
-    setupTest.test('run all actions', test => {
-      let connectStub = sandbox.stub()
-      connectStub.returns(P.resolve())
+    setupTest.test('create sidecar and start it', test => {
+      let startStub = sandbox.stub()
+      startStub.returns(P.resolve())
 
-      let keys = { batchKey: 'batch', rowKey: 'row' }
-      let registerStub = sandbox.stub()
-      registerStub.returns(P.resolve(keys))
-
-      KmsConnection.create.returns({ connect: connectStub, register: registerStub })
+      Sidecar.create.returns({ start: startStub })
 
       require('../../src/server')
       .then(() => {
-        test.ok(KmsConnection.create.calledOnce)
-        test.ok(KmsConnection.create.calledWith(kmsConfig))
-        test.ok(connectStub.calledOnce)
-        test.ok(registerStub.calledOnce)
-        test.ok(Logger.info.calledWith(`Got keys from KMS: batch - ${keys.batchKey}, row - ${keys.rowKey}`))
+        test.ok(Sidecar.create.calledOnce)
+        test.ok(Sidecar.create.calledWith(sandbox.match({
+          SERVICE: service,
+          KMS: kmsConfig
+        })))
+        test.ok(startStub.calledOnce)
+        test.ok(Logger.info.calledWith('Sidecar running and listening'))
+        test.end()
+      })
+    })
+
+    setupTest.test('log error and rethrow', test => {
+      let error = new Error()
+
+      let startStub = sandbox.stub()
+      startStub.returns(P.reject(error))
+
+      Sidecar.create.returns({ start: startStub })
+
+      require('../../src/server')
+      .then(() => {
+        test.fail('Should have thrown error')
+        test.end()
+      })
+      .catch(err => {
+        test.ok(Logger.error.calledWith(error))
+        test.equal(err, error)
         test.end()
       })
     })

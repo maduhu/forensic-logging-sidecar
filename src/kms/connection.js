@@ -30,7 +30,7 @@ class KmsConnection {
     })
   }
 
-  register (sidecarId) {
+  register (sidecarId, serviceName) {
     return new P((resolve, reject) => {
       if (!this._connected) {
         return reject(new Error('You must connect before registering'))
@@ -58,7 +58,7 @@ class KmsConnection {
         }
       })
 
-      this._sendMessage(registerMessageId, 'register', { id: sidecarId, serviceName: 'test' })
+      this._sendMessage(registerMessageId, 'register', { id: sidecarId, serviceName })
     })
   }
 

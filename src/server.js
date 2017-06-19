@@ -1,15 +1,14 @@
 'use strict'
 
-const Uuid = require('uuid4')
 const Logger = require('@leveloneproject/central-services-shared').Logger
+const Sidecar = require('./sidecar')
 const Config = require('./lib/config')
-const KmsConnection = require('./kms/connection')
 
-const sidecarId = Uuid()
-const kmsConn = KmsConnection.create(Config.KMS)
+const sidecar = Sidecar.create(Config)
 
-module.exports = kmsConn.connect()
-  .then(() => kmsConn.register(sidecarId))
-  .then(keys => {
-    Logger.info(`Got keys from KMS: batch - ${keys.batchKey}, row - ${keys.rowKey}`)
+module.exports = sidecar.start()
+  .then(() => Logger.info('Sidecar running and listening'))
+  .catch(err => {
+    Logger.error(err)
+    throw err
   })

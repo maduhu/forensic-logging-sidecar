@@ -2,7 +2,7 @@
 
 const Test = require('tapes')(require('tape'))
 const Sinon = require('sinon')
-const EventEmitter = require('events').EventEmitter
+const EventEmitter = require('events')
 const Logger = require('@leveloneproject/central-services-shared').Logger
 const Proxyquire = require('proxyquire')
 
@@ -150,11 +150,12 @@ Test('KMS connection', kmsConnTest => {
       conn._websocket = wsEmitter
 
       let sidecarId = 'sidecar1'
+      let serviceName = 'TestSidecar'
       let registerMessageId = `register-${sidecarId}`
-      let registerRequest = { jsonrpc: '2.0', id: registerMessageId, method: 'register', params: { id: sidecarId, serviceName: 'test' } }
+      let registerRequest = { jsonrpc: '2.0', id: registerMessageId, method: 'register', params: { id: sidecarId, serviceName } }
       let registerResponse = { jsonrpc: '2.0', id: registerMessageId, result: { id: sidecarId, batchKey: 'batchKey', rowKey: 'rowKey' } }
 
-      let registerPromise = conn.register(sidecarId)
+      let registerPromise = conn.register(sidecarId, serviceName)
 
       let messageData = JSON.stringify(registerResponse)
       wsEmitter.emit('message', messageData)
