@@ -6,25 +6,25 @@ const Sinon = require('sinon')
 const Net = require('net')
 const EventEmitter = require('events').EventEmitter
 const Fixtures = require('../../fixtures')
-const EventSocket = require(`${src}/sidecar/event-socket`)
-const TcpConnection = require(`${src}/sidecar/event-socket/connection`)
+const EventListener = require(`${src}/sidecar/event-listener`)
+const TcpConnection = require(`${src}/sidecar/event-listener/connection`)
 
-Test('EventSocket', eventSocketTest => {
+Test('EventListener', eventListenerTest => {
   let sandbox
 
-  eventSocketTest.beforeEach(t => {
+  eventListenerTest.beforeEach(t => {
     sandbox = Sinon.sandbox.create()
     sandbox.stub(Net, 'createServer')
     sandbox.stub(TcpConnection, 'create')
     t.end()
   })
 
-  eventSocketTest.afterEach(t => {
+  eventListenerTest.afterEach(t => {
     sandbox.restore()
     t.end()
   })
 
-  eventSocketTest.test('listen should', listenTest => {
+  eventListenerTest.test('listen should', listenTest => {
     listenTest.test('call listen method on internal server and wait for event to resolve', test => {
       let port = 1111
       let hostname = 'localhost'
@@ -34,7 +34,7 @@ Test('EventSocket', eventSocketTest => {
 
       Net.createServer.returns(socket)
 
-      let eventSocket = EventSocket.create()
+      let eventSocket = EventListener.create()
       test.notOk(eventSocket._bound)
 
       let listenPromise = eventSocket.listen(port, hostname)
@@ -53,7 +53,7 @@ Test('EventSocket', eventSocketTest => {
     listenTest.end()
   })
 
-  eventSocketTest.test('close should', closeTest => {
+  eventListenerTest.test('close should', closeTest => {
     closeTest.test('call close method on internal socket and emit close event', test => {
       let socket = new EventEmitter()
       socket.close = sandbox.stub()
@@ -63,7 +63,7 @@ Test('EventSocket', eventSocketTest => {
 
       let closeSpy = sandbox.spy()
 
-      let eventSocket = EventSocket.create()
+      let eventSocket = EventListener.create()
       eventSocket._bound = true
       eventSocket.on('close', closeSpy)
 
@@ -81,7 +81,7 @@ Test('EventSocket', eventSocketTest => {
 
       Net.createServer.returns(socket)
 
-      let eventSocket = EventSocket.create()
+      let eventSocket = EventListener.create()
       eventSocket._bound = false
 
       eventSocket.close()
@@ -94,7 +94,7 @@ Test('EventSocket', eventSocketTest => {
     closeTest.end()
   })
 
-  eventSocketTest.test('receiving server close should', serverCloseTest => {
+  eventListenerTest.test('receiving server close should', serverCloseTest => {
     serverCloseTest.test('call close method on internal server and emit close event', test => {
       let socket = new EventEmitter()
       socket.close = sandbox.stub()
@@ -104,7 +104,7 @@ Test('EventSocket', eventSocketTest => {
 
       let closeSpy = sandbox.spy()
 
-      let eventSocket = EventSocket.create()
+      let eventSocket = EventListener.create()
       eventSocket._bound = true
       eventSocket.on('close', closeSpy)
 
@@ -119,7 +119,7 @@ Test('EventSocket', eventSocketTest => {
     serverCloseTest.end()
   })
 
-  eventSocketTest.test('receiving server error should', serverErrorTest => {
+  eventListenerTest.test('receiving server error should', serverErrorTest => {
     serverErrorTest.test('emit error event with existing error object', test => {
       let socket = new EventEmitter()
       Net.createServer.returns(socket)
@@ -128,7 +128,7 @@ Test('EventSocket', eventSocketTest => {
 
       let error = new Error('bad stuff in server')
 
-      let eventSocket = EventSocket.create()
+      let eventSocket = EventListener.create()
       eventSocket.on('error', errorSpy)
 
       socket.emit('error', error)
@@ -141,8 +141,8 @@ Test('EventSocket', eventSocketTest => {
     serverErrorTest.end()
   })
 
-  eventSocketTest.test('receiving server connection should', serverConnectionTest => {
-    serverConnectionTest.test('create TcpConnection', test => {
+  eventListenerTest.test('receiving server connection should', serverConnectionTest => {
+    serverConnectionTest.test('create TcpConnection and add to list', test => {
       let socket = new EventEmitter()
       Net.createServer.returns(socket)
 
@@ -153,9 +153,11 @@ Test('EventSocket', eventSocketTest => {
       let tcpConnection = new EventEmitter()
       TcpConnection.create.returns(tcpConnection)
 
-      EventSocket.create()
+      let eventSocket = EventListener.create()
+      test.equal(eventSocket._connections.length, 0)
 
       socket.emit('connection', conn)
+      test.equal(eventSocket._connections.length, 1)
 
       test.ok(TcpConnection.create.calledOnce)
       test.ok(TcpConnection.create.calledWith(conn))
@@ -165,7 +167,7 @@ Test('EventSocket', eventSocketTest => {
     serverConnectionTest.end()
   })
 
-  eventSocketTest.test('receiving TcpConnection message should', connMessageTest => {
+  eventListenerTest.test('receiving TcpConnection message should', connMessageTest => {
     connMessageTest.test('emit message event', test => {
       let socket = new EventEmitter()
       Net.createServer.returns(socket)
@@ -179,7 +181,7 @@ Test('EventSocket', eventSocketTest => {
 
       let messageSpy = sandbox.spy()
 
-      let eventSocket = EventSocket.create()
+      let eventSocket = EventListener.create()
       eventSocket.on('message', messageSpy)
 
       socket.emit('connection', conn)
@@ -197,8 +199,8 @@ Test('EventSocket', eventSocketTest => {
     connMessageTest.end()
   })
 
-  eventSocketTest.test('receiving TcpConnection close should', connCloseTest => {
-    connCloseTest.test('emit disconnect event', test => {
+  eventListenerTest.test('receiving TcpConnection end should', connCloseTest => {
+    connCloseTest.test('remove connection from list and emit disconnect event', test => {
       let socket = new EventEmitter()
       Net.createServer.returns(socket)
 
@@ -211,12 +213,14 @@ Test('EventSocket', eventSocketTest => {
 
       let disconnectSpy = sandbox.spy()
 
-      let eventSocket = EventSocket.create()
+      let eventSocket = EventListener.create()
       eventSocket.on('disconnect', disconnectSpy)
 
       socket.emit('connection', conn)
+      test.equal(eventSocket._connections.length, 1)
 
-      tcpConnection.emit('close')
+      tcpConnection.emit('end')
+      test.equal(eventSocket._connections.length, 0)
 
       test.ok(disconnectSpy.called)
       test.ok(disconnectSpy.calledWith(tcpConnection))
@@ -226,7 +230,7 @@ Test('EventSocket', eventSocketTest => {
     connCloseTest.end()
   })
 
-  eventSocketTest.test('receiving TcpConnection error should', connErrorTest => {
+  eventListenerTest.test('receiving TcpConnection error should', connErrorTest => {
     connErrorTest.test('emit error event', test => {
       let socket = new EventEmitter()
       Net.createServer.returns(socket)
@@ -241,7 +245,7 @@ Test('EventSocket', eventSocketTest => {
       let errorSpy = sandbox.spy()
       let error = new Error('bad stuff in server')
 
-      let eventSocket = EventSocket.create()
+      let eventSocket = EventListener.create()
       eventSocket.on('error', errorSpy)
 
       socket.emit('connection', conn)
@@ -256,5 +260,5 @@ Test('EventSocket', eventSocketTest => {
     connErrorTest.end()
   })
 
-  eventSocketTest.end()
+  eventListenerTest.end()
 })

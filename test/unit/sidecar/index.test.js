@@ -8,7 +8,7 @@ const EventEmitter = require('events')
 const Proxyquire = require('proxyquire')
 const Logger = require('@leveloneproject/central-services-shared').Logger
 const KmsConnection = require(`${src}/kms/connection`)
-const EventSocket = require(`${src}/sidecar/event-socket`)
+const EventListener = require(`${src}/sidecar/event-listener`)
 
 Test('sidecar test', sidecarTest => {
   let sandbox
@@ -19,7 +19,7 @@ Test('sidecar test', sidecarTest => {
     sandbox = Sinon.sandbox.create()
     sandbox.stub(Logger)
     sandbox.stub(KmsConnection, 'create')
-    sandbox.stub(EventSocket, 'create')
+    sandbox.stub(EventListener, 'create')
 
     Sidecar = Proxyquire(`${src}/sidecar`, { 'uuid4': () => sidecarId })
 
@@ -36,7 +36,7 @@ Test('sidecar test', sidecarTest => {
       KmsConnection.create.returns({})
 
       let onStub = sandbox.stub()
-      EventSocket.create.returns({ 'on': onStub })
+      EventListener.create.returns({ 'on': onStub })
 
       let settings = { SERVICE: 'test-service', KMS: { URL: 'ws://test.com' }, PORT: 1234 }
       let sidecar = Sidecar.create(settings)
@@ -46,7 +46,7 @@ Test('sidecar test', sidecarTest => {
       test.equal(sidecar._service, settings.SERVICE)
       test.ok(KmsConnection.create.calledOnce)
       test.ok(KmsConnection.create.calledWith(settings.KMS))
-      test.ok(EventSocket.create.calledOnce)
+      test.ok(EventListener.create.calledOnce)
       test.ok(onStub.calledWith('message'))
       test.end()
     })
@@ -66,7 +66,7 @@ Test('sidecar test', sidecarTest => {
       KmsConnection.create.returns({ connect: connectStub, register: registerStub })
 
       let listenStub = sandbox.stub()
-      EventSocket.create.returns({ 'on': sandbox.stub(), listen: listenStub })
+      EventListener.create.returns({ 'on': sandbox.stub(), listen: listenStub })
 
       let settings = { SERVICE: 'test-service', KMS: { URL: 'ws://test.com' }, PORT: 1234 }
       let sidecar = Sidecar.create(settings)
@@ -99,7 +99,7 @@ Test('sidecar test', sidecarTest => {
 
       let eventSocket = new EventEmitter()
       eventSocket.listen = sandbox.stub()
-      EventSocket.create.returns(eventSocket)
+      EventListener.create.returns(eventSocket)
 
       let settings = { SERVICE: 'test-service', KMS: { URL: 'ws://test.com' }, PORT: 1234 }
       let sidecar = Sidecar.create(settings)

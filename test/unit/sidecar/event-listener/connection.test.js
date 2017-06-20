@@ -5,7 +5,7 @@ const Test = require('tapes')(require('tape'))
 const Sinon = require('sinon')
 const EventEmitter = require('events')
 const Fixtures = require('../../fixtures')
-const TcpConnection = require(`${src}/sidecar/event-socket/connection`)
+const TcpConnection = require(`${src}/sidecar/event-listener/connection`)
 
 Test('TcpConnection', tcpConnTest => {
   let sandbox
@@ -20,17 +20,17 @@ Test('TcpConnection', tcpConnTest => {
     t.end()
   })
 
-  tcpConnTest.test('receiving socket close should', receiveCloseTest => {
-    receiveCloseTest.test('emit close event', test => {
+  tcpConnTest.test('receiving socket end should', receiveCloseTest => {
+    receiveCloseTest.test('emit end event', test => {
       let socket = new EventEmitter()
-      let closeSpy = sandbox.spy()
+      let endSpy = sandbox.spy()
 
       let conn = TcpConnection.create(socket)
-      conn.on('close', closeSpy)
+      conn.on('end', endSpy)
 
-      socket.emit('close')
+      socket.emit('end')
 
-      test.ok(closeSpy.called)
+      test.ok(endSpy.called)
       test.end()
     })
 

@@ -2,7 +2,7 @@
 
 const Uuid = require('uuid4')
 const Logger = require('@leveloneproject/central-services-shared').Logger
-const EventSocket = require('./event-socket')
+const EventListener = require('./event-listener')
 const KmsConnection = require('../kms/connection')
 
 class Sidecar {
@@ -13,8 +13,8 @@ class Sidecar {
 
     this._kmsConnection = KmsConnection.create(settings.KMS)
 
-    this._eventSocket = EventSocket.create()
-    this._eventSocket.on('message', this._handleMessage)
+    this._eventListener = EventListener.create()
+    this._eventListener.on('message', this._handleMessage)
   }
 
   start () {
@@ -24,7 +24,7 @@ class Sidecar {
         this._batchKey = keys.batchKey
         this._rowKey = keys.rowKey
       })
-      .then(() => this._eventSocket.listen(this._port))
+      .then(() => this._eventListener.listen(this._port))
   }
 
   _handleMessage (message) {
