@@ -1,6 +1,6 @@
 instrumentation:
   include-all-sources: true
-  excludes: ['**/examples/**']
+  excludes: ['**/examples/**', '**/migrations/**']
 check:
   global:
     statements: 90

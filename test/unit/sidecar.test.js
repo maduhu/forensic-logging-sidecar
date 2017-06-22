@@ -1,14 +1,14 @@
 'use strict'
 
-const src = '../../../src'
+const src = '../../src'
 const Test = require('tapes')(require('tape'))
 const Sinon = require('sinon')
 const P = require('bluebird')
 const EventEmitter = require('events')
 const Proxyquire = require('proxyquire')
-const Logger = require('@leveloneproject/central-services-shared').Logger
-const KmsConnection = require(`${src}/kms/connection`)
-const EventListener = require(`${src}/sidecar/event-listener`)
+const KmsConnection = require(`${src}/kms`)
+const SocketListener = require(`${src}/socket`)
+const EventService = require(`${src}/domain/event`)
 
 Test('sidecar test', sidecarTest => {
   let sandbox
@@ -17,9 +17,9 @@ Test('sidecar test', sidecarTest => {
 
   sidecarTest.beforeEach(t => {
     sandbox = Sinon.sandbox.create()
-    sandbox.stub(Logger)
     sandbox.stub(KmsConnection, 'create')
-    sandbox.stub(EventListener, 'create')
+    sandbox.stub(SocketListener, 'create')
+    sandbox.stub(EventService, 'create')
 
     Sidecar = Proxyquire(`${src}/sidecar`, { 'uuid4': () => sidecarId })
 
@@ -36,7 +36,7 @@ Test('sidecar test', sidecarTest => {
       KmsConnection.create.returns({})
 
       let onStub = sandbox.stub()
-      EventListener.create.returns({ 'on': onStub })
+      SocketListener.create.returns({ 'on': onStub })
 
       let settings = { SERVICE: 'test-service', KMS: { URL: 'ws://test.com' }, PORT: 1234 }
       let sidecar = Sidecar.create(settings)
@@ -46,7 +46,7 @@ Test('sidecar test', sidecarTest => {
       test.equal(sidecar._service, settings.SERVICE)
       test.ok(KmsConnection.create.calledOnce)
       test.ok(KmsConnection.create.calledWith(settings.KMS))
-      test.ok(EventListener.create.calledOnce)
+      test.ok(SocketListener.create.calledOnce)
       test.ok(onStub.calledWith('message'))
       test.end()
     })
@@ -66,7 +66,7 @@ Test('sidecar test', sidecarTest => {
       KmsConnection.create.returns({ connect: connectStub, register: registerStub })
 
       let listenStub = sandbox.stub()
-      EventListener.create.returns({ 'on': sandbox.stub(), listen: listenStub })
+      SocketListener.create.returns({ 'on': sandbox.stub(), listen: listenStub })
 
       let settings = { SERVICE: 'test-service', KMS: { URL: 'ws://test.com' }, PORT: 1234 }
       let sidecar = Sidecar.create(settings)
@@ -87,7 +87,9 @@ Test('sidecar test', sidecarTest => {
   })
 
   sidecarTest.test('receiving message event should', messageTest => {
-    messageTest.test('log received message', test => {
+    messageTest.test('increment sequence and save received message as an event', test => {
+      let startSequence = 5
+
       let connectStub = sandbox.stub()
       connectStub.returns(P.resolve())
 
@@ -99,17 +101,30 @@ Test('sidecar test', sidecarTest => {
 
       let eventSocket = new EventEmitter()
       eventSocket.listen = sandbox.stub()
-      EventListener.create.returns(eventSocket)
+      SocketListener.create.returns(eventSocket)
+
+      let event = { eventId: 'event-id' }
+      let eventPromise = P.resolve(event)
+      EventService.create.returns(eventPromise)
 
       let settings = { SERVICE: 'test-service', KMS: { URL: 'ws://test.com' }, PORT: 1234 }
       let sidecar = Sidecar.create(settings)
+      sidecar._sequence = startSequence
+
+      test.equal(sidecar._unbatchedEvents.length, 0)
 
       let msg = JSON.stringify({ id: 1, name: 'test' })
       sidecar.start()
         .then(() => {
           eventSocket.emit('message', msg)
-          test.ok(Logger.info.calledWith(`Received message ${msg}`))
-          test.end()
+
+          eventPromise
+            .then(() => {
+              test.ok(EventService.create.calledWith(sidecar._id, startSequence + 1, msg, keys.rowKey))
+              test.equal(sidecar._unbatchedEvents.length, 1)
+              test.deepEqual(sidecar._unbatchedEvents, [event.eventId])
+              test.end()
+            })
         })
     })
     messageTest.end()

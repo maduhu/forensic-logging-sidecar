@@ -5,7 +5,7 @@ const Net = require('net')
 const EventEmitter = require('events')
 const TcpConnection = require('./connection')
 
-class EventListener extends EventEmitter {
+class SocketListener extends EventEmitter {
   constructor () {
     super()
 
@@ -18,7 +18,7 @@ class EventListener extends EventEmitter {
       let tcpConnection = TcpConnection.create(socket)
       self._connections.push(tcpConnection)
 
-      tcpConnection.on('message', msg => self.emit('message', msg))
+      tcpConnection.on('message', msg => self.emit('message', msg.toString('utf8')))
       tcpConnection.on('end', () => {
         self._connections.splice(self._connections.indexOf(tcpConnection), 1)
         self.emit('disconnect', tcpConnection)
@@ -49,5 +49,5 @@ class EventListener extends EventEmitter {
 }
 
 exports.create = () => {
-  return new EventListener()
+  return new SocketListener()
 }

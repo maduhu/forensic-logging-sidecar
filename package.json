@@ -12,14 +12,25 @@
     "forensic",
     "logging"
   ],
+  "config": {
+    "knex": "--knexfile ./config/knexfile.js"
+  },
+  "standard": {
+    "ignore": [
+      "**/migrations/**"
+    ]
+  },
   "scripts": {
     "start": "node src/server.js",
     "test": "npm run test:unit | faucet",
     "pretest": "standard",
+    "test:all": "npm test && npm run test:integration",
     "test:unit": "tape 'test/unit/**/*.test.js'",
     "test:xunit": "npm run test:unit | tap-xunit",
     "test:coverage": "istanbul cover tape -- 'test/unit/**/*.test.js'",
     "test:coverage-check": "npm run test:coverage && istanbul check-coverage",
+    "test:integration": "./test/integration-runner.sh .env",
+    "migrate": "knex migrate:latest $npm_package_config_knex",
     "migrate:create": "knex migrate:make $npm_package_config_knex",
     "migrate:rollback": "knex migrate:rollback $npm_package_config_knex",
     "migrate:current": "knex migrate:currentVersion $npm_package_config_knex"
@@ -29,6 +40,8 @@
     "@leveloneproject/central-services-shared": "0.3.0",
     "bitsyntax": "0.0.4",
     "bluebird": "3.5.0",
+    "moment": "2.18.1",
+    "node-aes-cmac": "0.1.1",
     "rc": "1.2.1",
     "uuid4": "1.0.0",
     "ws": "3.0.0"

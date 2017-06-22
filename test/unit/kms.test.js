@@ -16,7 +16,7 @@ Test('KMS connection', kmsConnTest => {
     sandbox.stub(Logger)
 
     wsStub = sandbox.stub()
-    KmsConnection = Proxyquire('../../../src/kms/connection', { 'ws': wsStub })
+    KmsConnection = Proxyquire('../../src/kms', { 'ws': wsStub })
 
     t.end()
   })

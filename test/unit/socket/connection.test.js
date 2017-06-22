@@ -1,11 +1,11 @@
 'use strict'
 
-const src = '../../../../src'
+const src = '../../../src'
 const Test = require('tapes')(require('tape'))
 const Sinon = require('sinon')
 const EventEmitter = require('events')
-const Fixtures = require('../../fixtures')
-const TcpConnection = require(`${src}/sidecar/event-listener/connection`)
+const Fixtures = require('../fixtures')
+const TcpConnection = require(`${src}/socket/connection`)
 
 Test('TcpConnection', tcpConnTest => {
   let sandbox
