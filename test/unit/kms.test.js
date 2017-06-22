@@ -61,16 +61,58 @@ Test('KMS connection', kmsConnTest => {
         perMessageDeflate: false
       })))
       test.notOk(kmsConnection._connected)
+      test.ok(wsEmitter.listenerCount('open'), 1)
+      test.ok(wsEmitter.listenerCount('error'), 1)
+      test.equal(wsEmitter.listeners('error')[0].name.indexOf('_onError'), -1)
 
       wsEmitter.emit('open')
 
       connectPromise
         .then(() => {
           test.ok(kmsConnection._connected)
-          test.equal(wsEmitter.listenerCount('open'), 1)
+          test.equal(wsEmitter.listenerCount('open'), 0)
           test.equal(wsEmitter.listenerCount('close'), 1)
           test.equal(wsEmitter.listenerCount('error'), 1)
+          test.notEqual(wsEmitter.listeners('error')[0].name.indexOf('_onError'), -1)
           test.equal(wsEmitter.listenerCount('message'), 0)
+          test.end()
+        })
+    })
+
+    connectTest.test('reject if error event emitted', test => {
+      let settings = { URL: 'ws://test.com' }
+      let kmsConnection = KmsConnection.create(settings)
+
+      let wsEmitter = new EventEmitter()
+      wsStub.returns(wsEmitter)
+
+      wsEmitter.emit('open')
+
+      let connectPromise = kmsConnection.connect()
+      test.ok(wsStub.calledWithNew())
+      test.ok(wsStub.calledWith(settings.URL, sandbox.match({
+        perMessageDeflate: false
+      })))
+      test.notOk(kmsConnection._connected)
+      test.ok(wsEmitter.listenerCount('open'), 1)
+      test.ok(wsEmitter.listenerCount('error'), 1)
+      test.equal(wsEmitter.listeners('error')[0].name.indexOf('_onError'), -1)
+
+      let error = new Error('Error connecting to websocket')
+      wsEmitter.emit('error', error)
+
+      connectPromise
+        .then(() => {
+          test.fail('Should have thrown error')
+          test.end()
+        })
+        .catch(err => {
+          test.notOk(kmsConnection._connected)
+          test.equal(wsEmitter.listenerCount('open'), 0)
+          test.equal(wsEmitter.listenerCount('close'), 0)
+          test.equal(wsEmitter.listenerCount('error'), 0)
+          test.equal(wsEmitter.listenerCount('message'), 0)
+          test.equal(err, error)
           test.end()
         })
     })
@@ -147,7 +189,7 @@ Test('KMS connection', kmsConnTest => {
 
       let conn = KmsConnection.create()
       conn._connected = true
-      conn._websocket = wsEmitter
+      conn._ws = wsEmitter
 
       let sidecarId = 'sidecar1'
       let serviceName = 'TestSidecar'
@@ -176,7 +218,7 @@ Test('KMS connection', kmsConnTest => {
 
       let conn = KmsConnection.create()
       conn._connected = true
-      conn._websocket = wsEmitter
+      conn._ws = wsEmitter
 
       let sidecarId = 'sidecar1'
       let registerResponse = { jsonrpc: '2.0', id: 'non-register', result: { id: sidecarId, batchKey: 'batchKey', rowKey: 'rowKey' } }
@@ -204,7 +246,7 @@ Test('KMS connection', kmsConnTest => {
 
       let conn = KmsConnection.create()
       conn._connected = true
-      conn._websocket = wsEmitter
+      conn._ws = wsEmitter
 
       let sidecarId = 'sidecar1'
       let registerMessageId = `register-${sidecarId}`
@@ -233,7 +275,7 @@ Test('KMS connection', kmsConnTest => {
 
       let conn = KmsConnection.create()
       conn._connected = true
-      conn._websocket = wsEmitter
+      conn._ws = wsEmitter
 
       let sidecarId = 'sidecar1'
       let registerMessageId = `register-${sidecarId}`

@@ -5,7 +5,7 @@ const Test = require('tapes')(require('tape'))
 const Sinon = require('sinon')
 const Proxyquire = require('proxyquire')
 
-Test('symmetric crypto', symmetricTest => {
+Test('Symmetric crypto', symmetricTest => {
   let sandbox
   let aesCmacStub
   let Symmetric

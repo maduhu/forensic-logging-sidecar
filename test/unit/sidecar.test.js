@@ -10,7 +10,7 @@ const KmsConnection = require(`${src}/kms`)
 const SocketListener = require(`${src}/socket`)
 const EventService = require(`${src}/domain/event`)
 
-Test('sidecar test', sidecarTest => {
+Test('Sidecar', sidecarTest => {
   let sandbox
   let sidecarId = 'id'
   let Sidecar

@@ -7,7 +7,7 @@ const P = require('bluebird')
 const Db = require(`${src}/lib/db`)
 const Model = require(`${src}/domain/event/model`)
 
-Test('events model', modelTest => {
+Test('Events model', modelTest => {
   let sandbox
 
   modelTest.beforeEach((t) => {

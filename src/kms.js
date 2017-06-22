@@ -16,17 +16,30 @@ class KmsConnection {
         return resolve(this)
       }
 
-      this._websocket = new WS(this._url, {
+      const connectErrorListener = (err) => {
+        this._ws.removeAllListeners()
+        reject(err)
+      }
+
+      // Create the websocket, and wait for either an open or error event to complete Promise.
+      this._ws = new WS(this._url, {
         perMessageDeflate: false
       })
 
-      this._websocket.on('open', () => {
+      this._ws.once('open', () => {
         this._connected = true
+
+        // Remove listener only used for connect problems.
+        this._ws.removeListener('error', connectErrorListener)
+
+        // Attach the regular event listeners.
+        this._ws.on('close', this._onClose.bind(this))
+        this._ws.on('error', this._onError.bind(this))
+
         resolve(this)
       })
 
-      this._websocket.on('close', this._onClose.bind(this))
-      this._websocket.on('error', this._onError.bind(this))
+      this._ws.once('error', connectErrorListener)
     })
   }
 
@@ -38,11 +51,11 @@ class KmsConnection {
 
       const registerMessageId = `register-${sidecarId}`
 
-      this._websocket.once('message', (data, flags) => {
+      this._ws.once('message', (data, flags) => {
         Logger.info(`Received message during registration procees: ${data}`)
 
         // Set the message handler to the default.
-        this._websocket.on('message', this._onMessage.bind(this))
+        this._ws.on('message', this._onMessage.bind(this))
 
         const response = JSON.parse(data)
         if (response.id === registerMessageId) {
@@ -75,7 +88,7 @@ class KmsConnection {
   }
 
   _sendMessage (id, method, params) {
-    this._websocket.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }))
+    this._ws.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }))
   }
 }
 

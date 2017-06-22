@@ -10,7 +10,7 @@ const Config = require(`${src}/lib/config`)
 const Migrator = require(`${src}/lib/migrator`)
 const Sidecar = require(`${src}/sidecar`)
 
-Test('server test', serverTest => {
+Test('Server', serverTest => {
   let sandbox
   let oldService
   let oldKmsConfig
@@ -22,6 +22,7 @@ Test('server test', serverTest => {
   serverTest.beforeEach(t => {
     sandbox = Sinon.sandbox.create()
     sandbox.stub(Db, 'connect')
+    sandbox.stub(Db, 'disconnect')
     sandbox.stub(Sidecar, 'create')
     sandbox.stub(Migrator, 'migrate')
     sandbox.stub(Logger)
@@ -73,7 +74,7 @@ Test('server test', serverTest => {
       })
     })
 
-    setupTest.test('log error and rethrow', test => {
+    setupTest.test('cleanup and rethrow on error', test => {
       let error = new Error()
 
       Db.connect.returns(P.resolve({}))
@@ -91,6 +92,7 @@ Test('server test', serverTest => {
       })
       .catch(err => {
         test.ok(Logger.error.calledWith(error))
+        test.ok(Db.disconnect.calledOnce)
         test.equal(err, error)
         test.end()
       })

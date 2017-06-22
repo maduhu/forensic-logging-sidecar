@@ -36,7 +36,7 @@
     "migrate:current": "knex migrate:currentVersion $npm_package_config_knex"
   },
   "dependencies": {
-    "@leveloneproject/central-services-database": "0.2.1",
+    "@leveloneproject/central-services-database": "0.3.0",
     "@leveloneproject/central-services-shared": "0.3.0",
     "bitsyntax": "0.0.4",
     "bluebird": "3.5.0",

@@ -10,7 +10,7 @@ const Proxyquire = require('proxyquire')
 const Model = require(`${src}/domain/event/model`)
 const SymmetricCrypto = require(`${src}/crypto/symmetric`)
 
-Test('events service', serviceTest => {
+Test('Events service', serviceTest => {
   let sandbox
   let eventId
   let Service

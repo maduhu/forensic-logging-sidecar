@@ -7,7 +7,7 @@ const Path = require('path')
 const Migrations = require('@leveloneproject/central-services-database').Migrations
 const Proxyquire = require('proxyquire')
 
-Test('migrator', migratorTest => {
+Test('Migrator', migratorTest => {
   let sandbox
   let configuredMigrationsFolder
   let Migrator
