@@ -3,20 +3,28 @@
 const Test = require('tapes')(require('tape'))
 const Sinon = require('sinon')
 const EventEmitter = require('events')
+const Moment = require('moment')
 const Logger = require('@leveloneproject/central-services-shared').Logger
+const KeepAlive = require('../../../src/kms/keep-alive')
 const Proxyquire = require('proxyquire')
 
-Test('KMS connection', kmsConnTest => {
+Test('KmsConnection', kmsConnTest => {
   let sandbox
   let wsStub
+  let keepAliveStub
   let KmsConnection
 
   kmsConnTest.beforeEach(t => {
     sandbox = Sinon.sandbox.create()
     sandbox.stub(Logger)
+    sandbox.stub(Moment, 'utc')
+    sandbox.stub(KeepAlive, 'create')
+
+    keepAliveStub = { start: sandbox.stub(), stop: sandbox.stub() }
+    KeepAlive.create.returns(keepAliveStub)
 
     wsStub = sandbox.stub()
-    KmsConnection = Proxyquire('../../src/kms', { 'ws': wsStub })
+    KmsConnection = Proxyquire('../../../src/kms', { 'ws': wsStub })
 
     t.end()
   })
@@ -28,10 +36,11 @@ Test('KMS connection', kmsConnTest => {
 
   kmsConnTest.test('create should', createTest => {
     createTest.test('create new connection and set properties', test => {
-      let settings = { URL: 'ws://test.com' }
+      let settings = { URL: 'ws://test.com', PING_INTERVAL: 5000 }
       let conn = KmsConnection.create(settings)
 
       test.equal(conn._url, settings.URL)
+      test.equal(conn._pingInterval, settings.PING_INTERVAL)
       test.end()
     })
 
@@ -39,6 +48,7 @@ Test('KMS connection', kmsConnTest => {
       let conn = KmsConnection.create()
 
       test.equal(conn._url, 'ws://localhost:8080/sidecar')
+      test.equal(conn._pingInterval, 30000)
       test.end()
     })
 
@@ -47,7 +57,7 @@ Test('KMS connection', kmsConnTest => {
 
   kmsConnTest.test('connect should', connectTest => {
     connectTest.test('create websocket connection and resolve when open', test => {
-      let settings = { URL: 'ws://test.com' }
+      let settings = { URL: 'ws://test.com', PING_INTERVAL: 5000 }
       let kmsConnection = KmsConnection.create(settings)
 
       let wsEmitter = new EventEmitter()
@@ -63,7 +73,7 @@ Test('KMS connection', kmsConnTest => {
       test.notOk(kmsConnection._connected)
       test.ok(wsEmitter.listenerCount('open'), 1)
       test.ok(wsEmitter.listenerCount('error'), 1)
-      test.equal(wsEmitter.listeners('error')[0].name.indexOf('_onError'), -1)
+      test.equal(wsEmitter.listeners('error')[0].name.indexOf('_wsOnError'), -1)
 
       wsEmitter.emit('open')
 
@@ -73,8 +83,12 @@ Test('KMS connection', kmsConnTest => {
           test.equal(wsEmitter.listenerCount('open'), 0)
           test.equal(wsEmitter.listenerCount('close'), 1)
           test.equal(wsEmitter.listenerCount('error'), 1)
-          test.notEqual(wsEmitter.listeners('error')[0].name.indexOf('_onError'), -1)
+          test.notEqual(wsEmitter.listeners('error')[0].name.indexOf('_wsOnError'), -1)
+          test.equal(wsEmitter.listenerCount('ping'), 1)
+          test.equal(wsEmitter.listenerCount('pong'), 1)
           test.equal(wsEmitter.listenerCount('message'), 0)
+          test.ok(KeepAlive.create.calledWith(wsEmitter, settings.PING_INTERVAL))
+          test.ok(keepAliveStub.start.calledOnce)
           test.end()
         })
     })
@@ -112,12 +126,13 @@ Test('KMS connection', kmsConnTest => {
           test.equal(wsEmitter.listenerCount('close'), 0)
           test.equal(wsEmitter.listenerCount('error'), 0)
           test.equal(wsEmitter.listenerCount('message'), 0)
+          test.notOk(KeepAlive.create.calledOnce)
           test.equal(err, error)
           test.end()
         })
     })
 
-    connectTest.test('handle close event', test => {
+    connectTest.test('handle close event and cleanup', test => {
       let kmsConnection = KmsConnection.create()
 
       let wsEmitter = new EventEmitter()
@@ -131,12 +146,13 @@ Test('KMS connection', kmsConnTest => {
           let code = 100
           let reason = 'reason'
           wsEmitter.emit('close', code, reason)
-          test.ok(Logger.info.calledWith(`onClose: ${code} - ${reason}`))
+          test.ok(Logger.info.calledWith(`KMS websocket connection closed: ${code} - ${reason}`))
+          test.ok(keepAliveStub.stop.calledOnce)
           test.end()
         })
     })
 
-    connectTest.test('handle error event', test => {
+    connectTest.test('handle error event and cleanup', test => {
       let kmsConnection = KmsConnection.create()
 
       let wsEmitter = new EventEmitter()
@@ -149,7 +165,50 @@ Test('KMS connection', kmsConnTest => {
         .then(() => {
           let err = new Error()
           wsEmitter.emit('error', err)
-          test.ok(Logger.error.calledWith(err))
+          test.ok(Logger.error.calledWith('Error on KMS websocket connection', err))
+          test.ok(keepAliveStub.stop.calledOnce)
+          test.end()
+        })
+    })
+
+    connectTest.test('send pong on ping event', test => {
+      let kmsConnection = KmsConnection.create()
+
+      let wsEmitter = new EventEmitter()
+      wsEmitter.pong = sandbox.stub()
+      wsStub.returns(wsEmitter)
+
+      let connectPromise = kmsConnection.connect()
+      wsEmitter.emit('open')
+
+      connectPromise
+        .then(() => {
+          let data = JSON.stringify({ test: 'test' })
+          wsEmitter.emit('ping', data)
+          test.ok(wsEmitter.pong.calledWith(data))
+          test.end()
+        })
+    })
+
+    connectTest.test('log elapsed on pong event', test => {
+      let kmsConnection = KmsConnection.create()
+
+      let wsEmitter = new EventEmitter()
+      wsStub.returns(wsEmitter)
+
+      let connectPromise = kmsConnection.connect()
+      wsEmitter.emit('open')
+
+      connectPromise
+        .then(() => {
+          let now = Moment()
+          Moment.utc.returns(now)
+
+          let timestamp = Moment(now).subtract(5, 'seconds')
+          let data = JSON.stringify({ timestamp: timestamp.toISOString() })
+
+          wsEmitter.emit('pong', data)
+          test.ok(Logger.info.calledWith('Received pong, elapsed 5000ms'))
           test.end()
         })
     })

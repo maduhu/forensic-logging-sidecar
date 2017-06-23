@@ -2,6 +2,7 @@
   "PORT": 5678,
   "SERVICE": "TestService",
   "KMS": {
-    "URL": "ws://localhost:8080/sidecar"
+    "URL": "ws://localhost:8080/sidecar",
+    "PING_INTERVAL": 30000
   }
 }

@@ -2,11 +2,14 @@
 
 const P = require('bluebird')
 const WS = require('ws')
+const Moment = require('moment')
 const Logger = require('@leveloneproject/central-services-shared').Logger
+const KeepAlive = require('./keep-alive')
 
 class KmsConnection {
   constructor (settings) {
     this._url = settings.URL || 'ws://localhost:8080/sidecar'
+    this._pingInterval = settings.PING_INTERVAL || 30000
     this._connected = false
   }
 
@@ -33,8 +36,15 @@ class KmsConnection {
         this._ws.removeListener('error', connectErrorListener)
 
         // Attach the regular event listeners.
-        this._ws.on('close', this._onClose.bind(this))
-        this._ws.on('error', this._onError.bind(this))
+        this._ws.on('close', this._wsOnClose.bind(this))
+        this._ws.on('error', this._wsOnError.bind(this))
+
+        // Setup ping/pong.
+        this._ws.on('ping', this._wsOnPing.bind(this))
+        this._ws.on('pong', this._wsOnPong.bind(this))
+
+        this._keepAlive = KeepAlive.create(this._ws, this._pingInterval)
+        this._keepAlive.start()
 
         resolve(this)
       })
@@ -55,7 +65,7 @@ class KmsConnection {
         Logger.info(`Received message during registration procees: ${data}`)
 
         // Set the message handler to the default.
-        this._ws.on('message', this._onMessage.bind(this))
+        this._ws.on('message', this._wsOnMessage.bind(this))
 
         const response = JSON.parse(data)
         if (response.id === registerMessageId) {
@@ -75,20 +85,38 @@ class KmsConnection {
     })
   }
 
-  _onMessage (data, flags) {
+  _sendMessage (id, method, params) {
+    this._ws.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }))
+  }
+
+  _cleanup () {
+    Logger.info('Cleaning up KMS connection')
+    this._keepAlive.stop()
+  }
+
+  // Websocket event handlers
+  _wsOnPing (data) {
+    this._ws.pong(data)
+  }
+
+  _wsOnPong (data) {
+    const timestamp = Moment(JSON.parse(data).timestamp)
+    const elapsed = Moment.utc().diff(timestamp, 'ms')
+    Logger.info(`Received pong, elapsed ${elapsed}ms`)
+  }
+
+  _wsOnMessage (data, flags) {
     Logger.info(`onMessage: ${data}`)
   }
 
-  _onError (err) {
-    Logger.error(err)
+  _wsOnError (err) {
+    Logger.error('Error on KMS websocket connection', err)
+    this._cleanup()
   }
 
-  _onClose (code, reason) {
-    Logger.info(`onClose: ${code} - ${reason}`)
-  }
-
-  _sendMessage (id, method, params) {
-    this._ws.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }))
+  _wsOnClose (code, reason) {
+    Logger.info(`KMS websocket connection closed: ${code} - ${reason}`)
+    this._cleanup()
   }
 }
 
