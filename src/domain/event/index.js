@@ -13,6 +13,10 @@ exports.create = (sidecarId, sequence, message, signingKey) => {
   return Model.create({ eventId, sidecarId, sequence, message, signature, created: timestamp })
 }
 
+exports.getEventCountInTimespan = (sidecarId, startTime, endTime) => {
+  return Model.getEventCount(sidecarId, { startTime, endTime })
+}
+
 const signEvent = (sidecarId, sequence, message, timestamp, signingKey) => {
   const signingObject = { sidecarId, sequence, message, timestamp: timestamp.toISOString() }
   const compactJSON = JSON.stringify(signingObject)

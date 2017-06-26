@@ -4,6 +4,7 @@ const src = '../../../../src'
 const Test = require('tapes')(require('tape'))
 const Sinon = require('sinon')
 const P = require('bluebird')
+const Moment = require('moment')
 const Db = require(`${src}/lib/db`)
 const Model = require(`${src}/domain/event/model`)
 
@@ -15,9 +16,7 @@ Test('Events model', modelTest => {
 
     Db.events = {
       insert: sandbox.stub(),
-      update: sandbox.stub(),
-      findOne: sandbox.stub(),
-      find: sandbox.stub()
+      count: sandbox.stub()
     }
 
     t.end()
@@ -44,6 +43,40 @@ Test('Events model', modelTest => {
     })
 
     createTest.end()
+  })
+
+  modelTest.test('getEventCount should', getEventCountTest => {
+    getEventCountTest.test('get count of events for a sidecar id', test => {
+      let count = 5
+      let sidecarId = 'sidecar-id'
+
+      Db.events.count.returns(P.resolve(count))
+
+      Model.getEventCount(sidecarId)
+        .then(c => {
+          test.equal(c, count)
+          test.ok(Db.events.count.calledWith(sandbox.match({ sidecarId }), '*'))
+          test.end()
+        })
+    })
+
+    getEventCountTest.test('get count of sidecar events for a timespan', test => {
+      let count = 5
+      let now = Moment.utc()
+      let start = Moment.utc(now).subtract(5, 'minutes')
+      let sidecarId = 'sidecar-id'
+
+      Db.events.count.returns(P.resolve(count))
+
+      Model.getEventCount(sidecarId, { startTime: start, endTime: now })
+        .then(c => {
+          test.equal(c, count)
+          test.ok(Db.events.count.calledWith(sandbox.match({ sidecarId, 'created >=': start, 'created <=': now }), '*'))
+          test.end()
+        })
+    })
+
+    getEventCountTest.end()
   })
 
   modelTest.end()

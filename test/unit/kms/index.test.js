@@ -132,87 +132,6 @@ Test('KmsConnection', kmsConnTest => {
         })
     })
 
-    connectTest.test('handle close event and cleanup', test => {
-      let kmsConnection = KmsConnection.create()
-
-      let wsEmitter = new EventEmitter()
-      wsStub.returns(wsEmitter)
-
-      let connectPromise = kmsConnection.connect()
-      wsEmitter.emit('open')
-
-      connectPromise
-        .then(() => {
-          let code = 100
-          let reason = 'reason'
-          wsEmitter.emit('close', code, reason)
-          test.ok(Logger.info.calledWith(`KMS websocket connection closed: ${code} - ${reason}`))
-          test.ok(keepAliveStub.stop.calledOnce)
-          test.end()
-        })
-    })
-
-    connectTest.test('handle error event and cleanup', test => {
-      let kmsConnection = KmsConnection.create()
-
-      let wsEmitter = new EventEmitter()
-      wsStub.returns(wsEmitter)
-
-      let connectPromise = kmsConnection.connect()
-      wsEmitter.emit('open')
-
-      connectPromise
-        .then(() => {
-          let err = new Error()
-          wsEmitter.emit('error', err)
-          test.ok(Logger.error.calledWith('Error on KMS websocket connection', err))
-          test.ok(keepAliveStub.stop.calledOnce)
-          test.end()
-        })
-    })
-
-    connectTest.test('send pong on ping event', test => {
-      let kmsConnection = KmsConnection.create()
-
-      let wsEmitter = new EventEmitter()
-      wsEmitter.pong = sandbox.stub()
-      wsStub.returns(wsEmitter)
-
-      let connectPromise = kmsConnection.connect()
-      wsEmitter.emit('open')
-
-      connectPromise
-        .then(() => {
-          let data = JSON.stringify({ test: 'test' })
-          wsEmitter.emit('ping', data)
-          test.ok(wsEmitter.pong.calledWith(data))
-          test.end()
-        })
-    })
-
-    connectTest.test('log elapsed on pong event', test => {
-      let kmsConnection = KmsConnection.create()
-
-      let wsEmitter = new EventEmitter()
-      wsStub.returns(wsEmitter)
-
-      let connectPromise = kmsConnection.connect()
-      wsEmitter.emit('open')
-
-      connectPromise
-        .then(() => {
-          let now = Moment()
-          Moment.utc.returns(now)
-
-          let timestamp = Moment(now).subtract(5, 'seconds')
-          let data = JSON.stringify({ timestamp: timestamp.toISOString() })
-
-          wsEmitter.emit('pong', data)
-          test.ok(Logger.info.calledWith('Received pong, elapsed 5000ms'))
-          test.end()
-        })
-    })
-
     connectTest.test('return immediately if already connected', test => {
       let kmsConnection = KmsConnection.create()
       kmsConnection._connected = true
@@ -263,8 +182,11 @@ Test('KmsConnection', kmsConnTest => {
 
       registerPromise
         .then(keys => {
-          test.ok(Logger.info.calledWith(`Received message during registration procees: ${messageData}`))
-          test.ok(wsEmitter.send.calledWith(JSON.stringify(registerRequest)))
+          test.ok(Logger.info.calledWith('Received message during registration process'))
+
+          test.ok(wsEmitter.send.calledOnce)
+          test.deepEqual(JSON.parse(wsEmitter.send.firstCall.args), registerRequest)
+
           test.equal(keys.batchKey, registerResponse.result.batchKey)
           test.equal(keys.rowKey, registerResponse.result.rowKey)
           test.end()
@@ -347,20 +269,216 @@ Test('KmsConnection', kmsConnTest => {
 
       registerPromise
         .then(keys => {
-          test.ok(Logger.info.calledWith(`Received message during registration procees: ${messageData}`))
-          test.notOk(Logger.info.calledWith(`onMessage: ${messageData}`))
+          test.ok(Logger.info.calledWith('Received message during registration process'))
+          test.equal(Logger.info.callCount, 1)
 
-          let messageData2 = 'new message'
+          let messageData2 = JSON.stringify({ method: 'test' })
           wsEmitter.emit('message', messageData2)
 
-          test.ok(Logger.info.calledWith(`onMessage: ${messageData2}`))
-          test.notOk(Logger.info.calledWith(`Received message during registration procees: ${messageData2}`))
+          test.equal(Logger.info.callCount, 1)
 
           test.end()
         })
     })
 
     registerTest.end()
+  })
+
+  kmsConnTest.test('sendRequest should', sendRequestTest => {
+    sendRequestTest.test('build JsonRPC request and send through websocket', test => {
+      let id = 'id'
+      let method = 'test'
+      let params = { key: 'val' }
+      let jsonRpcRequest = { jsonrpc: '2.0', id, method, params }
+
+      let ws = { send: sandbox.stub() }
+
+      let conn = KmsConnection.create()
+      conn._ws = ws
+
+      conn.sendRequest(id, method, params)
+      test.ok(ws.send.calledOnce)
+      test.deepEqual(JSON.parse(ws.send.firstCall.args), jsonRpcRequest)
+
+      test.end()
+    })
+
+    sendRequestTest.end()
+  })
+
+  kmsConnTest.test('sendResponse should', sendResponseTest => {
+    sendResponseTest.test('build JsonRPC response and send through websocket', test => {
+      let id = 'id'
+      let result = { key: 'val' }
+      let jsonRpcResponse = { jsonrpc: '2.0', id, result }
+
+      let ws = { send: sandbox.stub() }
+
+      let conn = KmsConnection.create()
+      conn._ws = ws
+
+      conn.sendResponse(id, result)
+      test.ok(ws.send.calledOnce)
+      test.deepEqual(JSON.parse(ws.send.firstCall.args), jsonRpcResponse)
+      test.end()
+    })
+
+    sendResponseTest.end()
+  })
+
+  kmsConnTest.test('sendErrorResponse should', sendErrorResponseTest => {
+    sendErrorResponseTest.test('build JsonRPC error response and send through websocket', test => {
+      let id = 'id'
+      let error = { id: 101, message: 'error happened' }
+      let jsonRpcErrorResponse = { jsonrpc: '2.0', id, error }
+
+      let ws = { send: sandbox.stub() }
+
+      let conn = KmsConnection.create()
+      conn._ws = ws
+
+      conn.sendErrorResponse(id, error)
+      test.ok(ws.send.calledOnce)
+      test.deepEqual(JSON.parse(ws.send.firstCall.args), jsonRpcErrorResponse)
+      test.end()
+    })
+
+    sendErrorResponseTest.end()
+  })
+
+  kmsConnTest.test('receiving websocket close event should', closeEventTest => {
+    closeEventTest.test('log close details and cleanup', test => {
+      let kmsConnection = KmsConnection.create()
+
+      let wsEmitter = new EventEmitter()
+      wsStub.returns(wsEmitter)
+
+      let connectPromise = kmsConnection.connect()
+      wsEmitter.emit('open')
+
+      connectPromise
+        .then(() => {
+          let code = 100
+          let reason = 'reason'
+          wsEmitter.emit('close', code, reason)
+          test.ok(Logger.info.calledWith(`KMS websocket connection closed: ${code} - ${reason}`))
+          test.ok(keepAliveStub.stop.calledOnce)
+          test.end()
+        })
+    })
+
+    closeEventTest.end()
+  })
+
+  kmsConnTest.test('receiving websocket error event should', errorEventTest => {
+    errorEventTest.test('log error and cleanup', test => {
+      let kmsConnection = KmsConnection.create()
+
+      let wsEmitter = new EventEmitter()
+      wsStub.returns(wsEmitter)
+
+      let connectPromise = kmsConnection.connect()
+      wsEmitter.emit('open')
+
+      connectPromise
+        .then(() => {
+          let err = new Error()
+          wsEmitter.emit('error', err)
+          test.ok(Logger.error.calledWith('Error on KMS websocket connection', err))
+          test.ok(keepAliveStub.stop.calledOnce)
+          test.end()
+        })
+    })
+
+    errorEventTest.end()
+  })
+
+  kmsConnTest.test('receiving websocket ping event should', pingEventTest => {
+    pingEventTest.test('send pong', test => {
+      let kmsConnection = KmsConnection.create()
+
+      let wsEmitter = new EventEmitter()
+      wsEmitter.pong = sandbox.stub()
+      wsStub.returns(wsEmitter)
+
+      let connectPromise = kmsConnection.connect()
+      wsEmitter.emit('open')
+
+      connectPromise
+        .then(() => {
+          let data = JSON.stringify({ test: 'test' })
+          wsEmitter.emit('ping', data)
+          test.ok(wsEmitter.pong.calledWith(data))
+          test.end()
+        })
+    })
+
+    pingEventTest.end()
+  })
+
+  kmsConnTest.test('receiving websocket pong event', pongEventTest => {
+    pongEventTest.test('log elapsed time since ping', test => {
+      let kmsConnection = KmsConnection.create()
+
+      let wsEmitter = new EventEmitter()
+      wsStub.returns(wsEmitter)
+
+      let connectPromise = kmsConnection.connect()
+      wsEmitter.emit('open')
+
+      connectPromise
+        .then(() => {
+          let now = Moment()
+          Moment.utc.returns(now)
+
+          let timestamp = Moment(now).subtract(5, 'seconds')
+          let data = JSON.stringify({ timestamp: timestamp.toISOString() })
+
+          wsEmitter.emit('pong', data)
+          test.ok(Logger.info.calledWith('Received pong, elapsed 5000ms'))
+          test.end()
+        })
+    })
+
+    pongEventTest.end()
+  })
+
+  kmsConnTest.test('receiving websocket message event should', messageEventTest => {
+    messageEventTest.test('check for healtcheck method and emit healthCheck event', test => {
+      let wsEmitter = new EventEmitter()
+      wsEmitter.send = sandbox.stub()
+
+      let healthCheckSpy = sandbox.spy()
+
+      let conn = KmsConnection.create()
+      conn.on('healthCheck', healthCheckSpy)
+      conn._connected = true
+      conn._ws = wsEmitter
+
+      let sidecarId = 'sidecar1'
+      let registerMessageId = `register-${sidecarId}`
+      let registerResponse = { jsonrpc: '2.0', id: registerMessageId, result: { id: sidecarId, batchKey: 'batchKey', rowKey: 'rowKey' } }
+
+      let registerPromise = conn.register(sidecarId)
+
+      let messageData = JSON.stringify(registerResponse)
+      wsEmitter.emit('message', messageData)
+
+      registerPromise
+        .then(keys => {
+          let healthCheck = { jsonrpc: '2.0', id: 'e1c609bd-e147-460b-ae61-98264bc935ad', method: 'healthcheck', params: { level: 'ping' } }
+          wsEmitter.emit('message', JSON.stringify(healthCheck))
+
+          test.ok(healthCheckSpy.calledWith(sandbox.match({
+            id: healthCheck.id,
+            level: healthCheck.params.level
+          })))
+
+          test.end()
+        })
+    })
+
+    messageEventTest.end()
   })
 
   kmsConnTest.end()

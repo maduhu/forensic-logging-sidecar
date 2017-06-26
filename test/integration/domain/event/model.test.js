@@ -24,7 +24,7 @@ Test('events model', repoTest => {
     })
 
     createTest.test('not allow duplicate sequence for a given sidecar', test => {
-      const created = new Date()
+      const created = Moment.utc()
 
       const event = { eventId: Uuid(), sidecarId: Uuid(), sequence: 2, message: 'test message', signature: 'test-signature', created }
       const event2 = { eventId: Uuid(), sidecarId: event.sidecarId, sequence: 2, message: 'another message', signature: 'diff-signature', created }
@@ -44,6 +44,45 @@ Test('events model', repoTest => {
     })
 
     createTest.end()
+  })
+
+  repoTest.test('getCountInTimespan should', getCountTest => {
+    getCountTest.test('get events for sidecar', test => {
+      const now = Moment.utc()
+
+      const event = { eventId: Uuid(), sidecarId: Uuid(), sequence: 1, message: 'test message', signature: 'test-signature', created: Moment.utc(now).subtract(5, 'minutes') }
+      const event2 = { eventId: Uuid(), sidecarId: event.sidecarId, sequence: 2, message: 'another message', signature: 'diff-signature', created: Moment.utc(now).subtract(45, 'minutes') }
+      const event3 = { eventId: Uuid(), sidecarId: event.sidecarId, sequence: 3, message: 'another message', signature: 'diff-signature', created: Moment.utc(now).subtract(2, 'hours') }
+
+      Model.create(event)
+        .then(() => Model.create(event2))
+        .then(() => Model.create(event3))
+        .then(() => Model.getEventCount(event.sidecarId))
+        .then(count => {
+          test.equal(count, 3)
+          test.end()
+        })
+    })
+
+    getCountTest.test('get number of sidecar events in timespan', test => {
+      const now = Moment.utc()
+      const lastHour = Moment.utc(now).subtract(1, 'hour')
+
+      const event = { eventId: Uuid(), sidecarId: Uuid(), sequence: 1, message: 'test message', signature: 'test-signature', created: Moment.utc(now).subtract(5, 'minutes') }
+      const event2 = { eventId: Uuid(), sidecarId: event.sidecarId, sequence: 2, message: 'another message', signature: 'diff-signature', created: Moment.utc(now).subtract(45, 'minutes') }
+      const event3 = { eventId: Uuid(), sidecarId: event.sidecarId, sequence: 3, message: 'another message', signature: 'diff-signature', created: Moment.utc(now).subtract(2, 'hours') }
+
+      Model.create(event)
+        .then(() => Model.create(event2))
+        .then(() => Model.create(event3))
+        .then(() => Model.getEventCount(event.sidecarId, { startTime: lastHour, endTime: now }))
+        .then(count => {
+          test.equal(count, 2)
+          test.end()
+        })
+    })
+
+    getCountTest.end()
   })
 
   repoTest.end()

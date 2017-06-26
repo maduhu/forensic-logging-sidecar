@@ -11,7 +11,7 @@ const sidecar = Sidecar.create(Config)
 module.exports = Migrator.migrate()
   .then(() => Db.connect(Config.DATABASE_URI))
   .then(() => sidecar.start())
-  .then(() => Logger.info('Sidecar running and listening'))
+  .then(() => Logger.info(`Sidecar ${sidecar.id} for ${sidecar.service} connected to KMS and listening for messages on port ${sidecar.port}`))
   .catch(err => {
     Logger.error(err)
 

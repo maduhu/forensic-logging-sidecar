@@ -18,6 +18,7 @@ Test('Events service', serviceTest => {
   serviceTest.beforeEach((t) => {
     sandbox = Sinon.sandbox.create()
     sandbox.stub(Model, 'create')
+    sandbox.stub(Model, 'getEventCount')
     sandbox.stub(Moment, 'utc')
     sandbox.stub(SymmetricCrypto, 'sign')
 
@@ -68,6 +69,26 @@ Test('Events service', serviceTest => {
     })
 
     createTest.end()
+  })
+
+  serviceTest.test('getEventCountInTimespan should', getEventCountTest => {
+    getEventCountTest.test('get event count from model', test => {
+      let now = Moment()
+      let start = Moment(now).subtract(5, 'minutes')
+      let sidecarId = 'sidecar-id'
+      let count = 6
+
+      Model.getEventCount.returns(P.resolve(count))
+
+      Service.getEventCountInTimespan(sidecarId, start, now)
+        .then(c => {
+          test.equal(c, count)
+          test.ok(Model.getEventCount.calledWith(sidecarId, sandbox.match({ startTime: start, endTime: now })))
+          test.end()
+        })
+    })
+
+    getEventCountTest.end()
   })
 
   serviceTest.end()

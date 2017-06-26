@@ -55,7 +55,8 @@ Test('Server', serverTest => {
       let startStub = sandbox.stub()
       startStub.returns(P.resolve())
 
-      Sidecar.create.returns({ start: startStub })
+      let sidecar = { id: 'id', service: 'test-service', port: 1234, start: startStub }
+      Sidecar.create.returns(sidecar)
 
       require('../../src/server')
       .then(() => {
@@ -69,7 +70,7 @@ Test('Server', serverTest => {
           KMS: kmsConfig
         })))
         test.ok(startStub.calledOnce)
-        test.ok(Logger.info.calledWith('Sidecar running and listening'))
+        test.ok(Logger.info.calledWith(`Sidecar ${sidecar.id} for ${sidecar.service} connected to KMS and listening for messages on port ${sidecar.port}`))
         test.end()
       })
     })

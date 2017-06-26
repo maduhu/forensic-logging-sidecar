@@ -3,11 +3,14 @@
 const P = require('bluebird')
 const WS = require('ws')
 const Moment = require('moment')
+const EventEmitter = require('events')
 const Logger = require('@leveloneproject/central-services-shared').Logger
 const KeepAlive = require('./keep-alive')
 
-class KmsConnection {
+class KmsConnection extends EventEmitter {
   constructor (settings) {
+    super()
+
     this._url = settings.URL || 'ws://localhost:8080/sidecar'
     this._pingInterval = settings.PING_INTERVAL || 30000
     this._connected = false
@@ -62,7 +65,7 @@ class KmsConnection {
       const registerMessageId = `register-${sidecarId}`
 
       this._ws.once('message', (data, flags) => {
-        Logger.info(`Received message during registration procees: ${data}`)
+        Logger.info('Received message during registration process')
 
         // Set the message handler to the default.
         this._ws.on('message', this._wsOnMessage.bind(this))
@@ -81,17 +84,31 @@ class KmsConnection {
         }
       })
 
-      this._sendMessage(registerMessageId, 'register', { id: sidecarId, serviceName })
+      this.sendRequest(registerMessageId, 'register', { id: sidecarId, serviceName })
     })
   }
 
-  _sendMessage (id, method, params) {
-    this._ws.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }))
+  sendRequest (id, method, params) {
+    this._ws.send(this._buildJsonRPCMessage(id, { method, params }))
+  }
+
+  sendResponse (id, data) {
+    this._ws.send(this._buildJsonRPCMessage(id, { result: data }))
+  }
+
+  sendErrorResponse (id, error) {
+    this._ws.send(this._buildJsonRPCMessage(id, { error }))
   }
 
   _cleanup () {
     Logger.info('Cleaning up KMS connection')
     this._keepAlive.stop()
+  }
+
+  _buildJsonRPCMessage (id, data) {
+    data['id'] = id
+    data['jsonrpc'] = '2.0'
+    return JSON.stringify(data)
   }
 
   // Websocket event handlers
@@ -101,12 +118,15 @@ class KmsConnection {
 
   _wsOnPong (data) {
     const timestamp = Moment(JSON.parse(data).timestamp)
-    const elapsed = Moment.utc().diff(timestamp, 'ms')
+    const elapsed = Moment.utc().diff(timestamp)
     Logger.info(`Received pong, elapsed ${elapsed}ms`)
   }
 
   _wsOnMessage (data, flags) {
-    Logger.info(`onMessage: ${data}`)
+    let parsed = JSON.parse(data)
+    if (parsed.method === 'healthcheck') {
+      this.emit('healthCheck', { id: parsed.id, level: parsed.params.level })
+    }
   }
 
   _wsOnError (err) {
