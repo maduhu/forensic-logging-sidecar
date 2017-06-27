@@ -6,6 +6,8 @@ const Moment = require('moment')
 const EventEmitter = require('events')
 const Logger = require('@leveloneproject/central-services-shared').Logger
 const KeepAlive = require('./keep-alive')
+const Errors = require('../errors')
+const SymmetricCrypto = require('../crypto/symmetric')
 
 class KmsConnection extends EventEmitter {
   constructor (settings) {
@@ -64,26 +66,57 @@ class KmsConnection extends EventEmitter {
 
       const registerMessageId = `register-${sidecarId}`
 
-      this._ws.once('message', (data, flags) => {
-        Logger.info('Received message during registration process')
+      // Setup one-time message handler to process registration response.
+      this._ws.once('message', (registerData, registerFlags) => {
+        Logger.info('Received initial KMS registration response')
 
-        // Set the message handler to the default.
-        this._ws.on('message', this._wsOnMessage.bind(this))
-
-        const response = JSON.parse(data)
-        if (response.id === registerMessageId) {
-          if (response.result.id === sidecarId) {
-            resolve({ batchKey: response.result.batchKey, rowKey: response.result.rowKey })
-          } else {
-            Logger.error(`Received register message for different sidecar from KMS during registration process: ${data}`)
-            reject(new Error('Error during KMS registration process'))
+        const registerResponse = JSON.parse(registerData)
+        if (registerResponse.id === registerMessageId) {
+          if (registerResponse.error) {
+            return reject(new Errors.KmsRegistrationError(`Error received during KMS registration: ${registerResponse.error.id} - ${registerResponse.error.message}`))
           }
+
+          const rowKey = registerResponse.result.rowKey
+          const batchKey = registerResponse.result.batchKey
+          const challenge = registerResponse.result.challenge
+
+          const challengeMessageId = `challenge-${sidecarId}`
+
+          // Setup one-time message handler to process challenge response.
+          this._ws.once('message', (challengeData, challengeFlags) => {
+            Logger.info('Received KMS registration challenge response')
+
+            const challengeResponse = JSON.parse(challengeData)
+            if (challengeResponse.id === challengeMessageId) {
+              if (challengeResponse.error) {
+                return reject(new Errors.KmsRegistrationError(`Error received during KMS challenge: ${challengeResponse.error.id} - ${challengeResponse.error.message}`))
+              }
+
+              if (challengeResponse.result.status.toUpperCase() !== 'OK') {
+                return reject(new Errors.KmsRegistrationError(`Received invalid status from KMS during challenge: ${challengeResponse.result.status}`))
+              }
+
+              // Set the message handler to the default.
+              this._ws.on('message', this._wsOnMessage.bind(this))
+
+              resolve({ batchKey, rowKey })
+            } else {
+              reject(new Errors.KmsRegistrationError(`Received non-challenge message from KMS during challenge: ${challengeData}`))
+            }
+          })
+
+          // Send challenge request to KMS.
+          const rowSignature = SymmetricCrypto.sign(rowKey, challenge)
+          const batchSignature = ''
+
+          this.sendRequest(challengeMessageId, 'challenge', { rowSignature, batchSignature })
         } else {
-          Logger.error(`Received non-register message from KMS during registration process: ${data}`)
-          reject(new Error('Error during KMS registration process'))
+          Logger.error()
+          reject(new Errors.KmsRegistrationError(`Received non-register message from KMS during registration: ${registerData}`))
         }
       })
 
+      // Send initial registration request to KMS.
       this.sendRequest(registerMessageId, 'register', { id: sidecarId, serviceName })
     })
   }

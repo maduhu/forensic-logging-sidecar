@@ -6,6 +6,8 @@ const EventEmitter = require('events')
 const Moment = require('moment')
 const Logger = require('@leveloneproject/central-services-shared').Logger
 const KeepAlive = require('../../../src/kms/keep-alive')
+const Errors = require('../../../src/errors')
+const SymmetricCrypto = require('../../../src/crypto/symmetric')
 const Proxyquire = require('proxyquire')
 
 Test('KmsConnection', kmsConnTest => {
@@ -19,6 +21,7 @@ Test('KmsConnection', kmsConnTest => {
     sandbox.stub(Logger)
     sandbox.stub(Moment, 'utc')
     sandbox.stub(KeepAlive, 'create')
+    sandbox.stub(SymmetricCrypto, 'sign')
 
     keepAliveStub = { start: sandbox.stub(), stop: sandbox.stub() }
     KeepAlive.create.returns(keepAliveStub)
@@ -161,7 +164,7 @@ Test('KmsConnection', kmsConnTest => {
         })
     })
 
-    registerTest.test('register with KMS and return keys', test => {
+    registerTest.test('register with KMS and perform challenge', test => {
       let wsEmitter = new EventEmitter()
       wsEmitter.send = sandbox.stub()
 
@@ -171,21 +174,33 @@ Test('KmsConnection', kmsConnTest => {
 
       let sidecarId = 'sidecar1'
       let serviceName = 'TestSidecar'
+
       let registerMessageId = `register-${sidecarId}`
       let registerRequest = { jsonrpc: '2.0', id: registerMessageId, method: 'register', params: { id: sidecarId, serviceName } }
-      let registerResponse = { jsonrpc: '2.0', id: registerMessageId, result: { id: sidecarId, batchKey: 'batchKey', rowKey: 'rowKey' } }
+      let registerResponse = { jsonrpc: '2.0', id: registerMessageId, result: { id: sidecarId, batchKey: 'batch-key', rowKey: 'row-key', challenge: 'challenge' } }
+
+      const rowSignature = 'row-signature'
+      const batchSignature = ''
+      SymmetricCrypto.sign.returns(rowSignature)
+
+      let challengeMessageId = `challenge-${sidecarId}`
+      let challengeRequest = { jsonrpc: '2.0', id: challengeMessageId, method: 'challenge', params: { rowSignature, batchSignature } }
+      let challengeResponse = { jsonrpc: '2.0', id: challengeMessageId, result: { status: 'ok' } }
 
       let registerPromise = conn.register(sidecarId, serviceName)
 
-      let messageData = JSON.stringify(registerResponse)
-      wsEmitter.emit('message', messageData)
+      wsEmitter.emit('message', JSON.stringify(registerResponse))
+      wsEmitter.emit('message', JSON.stringify(challengeResponse))
 
       registerPromise
         .then(keys => {
-          test.ok(Logger.info.calledWith('Received message during registration process'))
+          test.ok(Logger.info.calledWith('Received initial KMS registration response'))
 
-          test.ok(wsEmitter.send.calledOnce)
+          test.ok(wsEmitter.send.calledTwice)
           test.deepEqual(JSON.parse(wsEmitter.send.firstCall.args), registerRequest)
+          test.deepEqual(JSON.parse(wsEmitter.send.secondCall.args), challengeRequest)
+
+          test.ok(SymmetricCrypto.sign.calledWith(registerResponse.result.rowKey, registerResponse.result.challenge))
 
           test.equal(keys.batchKey, registerResponse.result.batchKey)
           test.equal(keys.rowKey, registerResponse.result.rowKey)
@@ -206,22 +221,21 @@ Test('KmsConnection', kmsConnTest => {
 
       let registerPromise = conn.register(sidecarId)
 
-      let messageData = JSON.stringify(registerResponse)
-      wsEmitter.emit('message', messageData)
+      wsEmitter.emit('message', JSON.stringify(registerResponse))
 
       registerPromise
         .then(() => {
           test.fail('Should have thrown error')
           test.end()
         })
-        .catch(err => {
-          test.ok(Logger.error.calledWith(`Received non-register message from KMS during registration process: ${messageData}`))
-          test.equal(err.message, 'Error during KMS registration process')
+        .catch(Errors.KmsRegistrationError, err => {
+          test.ok(wsEmitter.send.calledOnce)
+          test.equal(err.message, `Received non-register message from KMS during registration: ${JSON.stringify(registerResponse)}`)
           test.end()
         })
     })
 
-    registerTest.test('throw error if a register message for a different sidecar received', test => {
+    registerTest.test('throw error if KMS sends error during registration', test => {
       let wsEmitter = new EventEmitter()
       wsEmitter.send = sandbox.stub()
 
@@ -230,22 +244,108 @@ Test('KmsConnection', kmsConnTest => {
       conn._ws = wsEmitter
 
       let sidecarId = 'sidecar1'
-      let registerMessageId = `register-${sidecarId}`
-      let registerResponse = { jsonrpc: '2.0', id: registerMessageId, result: { id: 'sidecar2', batchKey: 'batchKey', rowKey: 'rowKey' } }
+      let registerResponse = { jsonrpc: '2.0', id: `register-${sidecarId}`, error: { id: 101, message: 'bad stuff' } }
 
       let registerPromise = conn.register(sidecarId)
 
-      let messageData = JSON.stringify(registerResponse)
-      wsEmitter.emit('message', messageData)
+      wsEmitter.emit('message', JSON.stringify(registerResponse))
 
       registerPromise
         .then(() => {
           test.fail('Should have thrown error')
           test.end()
         })
-        .catch(err => {
-          test.ok(Logger.error.calledWith(`Received register message for different sidecar from KMS during registration process: ${messageData}`))
-          test.equal(err.message, 'Error during KMS registration process')
+        .catch(Errors.KmsRegistrationError, err => {
+          test.ok(wsEmitter.send.calledOnce)
+          test.equal(err.message, `Error received during KMS registration: ${registerResponse.error.id} - ${registerResponse.error.message}`)
+          test.end()
+        })
+    })
+
+    registerTest.test('throw error if a non-challenge message received', test => {
+      let wsEmitter = new EventEmitter()
+      wsEmitter.send = sandbox.stub()
+
+      let conn = KmsConnection.create()
+      conn._connected = true
+      conn._ws = wsEmitter
+
+      let sidecarId = 'sidecar1'
+
+      let registerResponse = { jsonrpc: '2.0', id: `register-${sidecarId}`, result: { id: sidecarId, batchKey: 'batch-key', rowKey: 'row-key', challenge: 'challenge' } }
+      let challengeResponse = { jsonrpc: '2.0', id: 'non-challenge', result: { status: 'ok' } }
+
+      let registerPromise = conn.register(sidecarId)
+
+      wsEmitter.emit('message', JSON.stringify(registerResponse))
+      wsEmitter.emit('message', JSON.stringify(challengeResponse))
+
+      registerPromise
+        .then(() => {
+          test.fail('Should have thrown error')
+          test.end()
+        })
+        .catch(Errors.KmsRegistrationError, err => {
+          test.ok(wsEmitter.send.calledTwice)
+          test.equal(err.message, `Received non-challenge message from KMS during challenge: ${JSON.stringify(challengeResponse)}`)
+          test.end()
+        })
+    })
+
+    registerTest.test('throw error if KMS sends error during challenge', test => {
+      let wsEmitter = new EventEmitter()
+      wsEmitter.send = sandbox.stub()
+
+      let conn = KmsConnection.create()
+      conn._connected = true
+      conn._ws = wsEmitter
+
+      let sidecarId = 'sidecar1'
+
+      let registerResponse = { jsonrpc: '2.0', id: `register-${sidecarId}`, result: { id: sidecarId, batchKey: 'batch-key', rowKey: 'row-key', challenge: 'challenge' } }
+      let challengeResponse = { jsonrpc: '2.0', id: `challenge-${sidecarId}`, error: { id: 105, message: 'bad challenge' } }
+
+      let registerPromise = conn.register(sidecarId)
+
+      wsEmitter.emit('message', JSON.stringify(registerResponse))
+      wsEmitter.emit('message', JSON.stringify(challengeResponse))
+
+      registerPromise
+        .then(() => {
+          test.fail('Should have thrown error')
+          test.end()
+        })
+        .catch(Errors.KmsRegistrationError, err => {
+          test.equal(err.message, `Error received during KMS challenge: ${challengeResponse.error.id} - ${challengeResponse.error.message}`)
+          test.end()
+        })
+    })
+
+    registerTest.test('throw error if KMS returns invalid status during challenge', test => {
+      let wsEmitter = new EventEmitter()
+      wsEmitter.send = sandbox.stub()
+
+      let conn = KmsConnection.create()
+      conn._connected = true
+      conn._ws = wsEmitter
+
+      let sidecarId = 'sidecar1'
+
+      let registerResponse = { jsonrpc: '2.0', id: `register-${sidecarId}`, result: { id: sidecarId, batchKey: 'batch-key', rowKey: 'row-key', challenge: 'challenge' } }
+      let challengeResponse = { jsonrpc: '2.0', id: `challenge-${sidecarId}`, result: { status: 'nope' } }
+
+      let registerPromise = conn.register(sidecarId)
+
+      wsEmitter.emit('message', JSON.stringify(registerResponse))
+      wsEmitter.emit('message', JSON.stringify(challengeResponse))
+
+      registerPromise
+        .then(() => {
+          test.fail('Should have thrown error')
+          test.end()
+        })
+        .catch(Errors.KmsRegistrationError, err => {
+          test.equal(err.message, `Received invalid status from KMS during challenge: ${challengeResponse.result.status}`)
           test.end()
         })
     })
@@ -259,23 +359,24 @@ Test('KmsConnection', kmsConnTest => {
       conn._ws = wsEmitter
 
       let sidecarId = 'sidecar1'
-      let registerMessageId = `register-${sidecarId}`
-      let registerResponse = { jsonrpc: '2.0', id: registerMessageId, result: { id: sidecarId, batchKey: 'batchKey', rowKey: 'rowKey' } }
+      let registerResponse = { jsonrpc: '2.0', id: `register-${sidecarId}`, result: { id: sidecarId, batchKey: 'batchKey', rowKey: 'rowKey' } }
+      let challengeResponse = { jsonrpc: '2.0', id: `challenge-${sidecarId}`, result: { status: 'ok' } }
 
       let registerPromise = conn.register(sidecarId)
 
-      let messageData = JSON.stringify(registerResponse)
-      wsEmitter.emit('message', messageData)
+      wsEmitter.emit('message', JSON.stringify(registerResponse))
+      wsEmitter.emit('message', JSON.stringify(challengeResponse))
 
       registerPromise
         .then(keys => {
-          test.ok(Logger.info.calledWith('Received message during registration process'))
-          test.equal(Logger.info.callCount, 1)
+          test.ok(Logger.info.calledWith('Received initial KMS registration response'))
+          test.ok(Logger.info.calledWith('Received KMS registration challenge response'))
+          test.equal(Logger.info.callCount, 2)
 
           let messageData2 = JSON.stringify({ method: 'test' })
           wsEmitter.emit('message', messageData2)
 
-          test.equal(Logger.info.callCount, 1)
+          test.equal(Logger.info.callCount, 2)
 
           test.end()
         })
@@ -456,13 +557,13 @@ Test('KmsConnection', kmsConnTest => {
       conn._ws = wsEmitter
 
       let sidecarId = 'sidecar1'
-      let registerMessageId = `register-${sidecarId}`
-      let registerResponse = { jsonrpc: '2.0', id: registerMessageId, result: { id: sidecarId, batchKey: 'batchKey', rowKey: 'rowKey' } }
+      let registerResponse = { jsonrpc: '2.0', id: `register-${sidecarId}`, result: { id: sidecarId, batchKey: 'batchKey', rowKey: 'rowKey' } }
+      let challengeResponse = { jsonrpc: '2.0', id: `challenge-${sidecarId}`, result: { status: 'ok' } }
 
       let registerPromise = conn.register(sidecarId)
 
-      let messageData = JSON.stringify(registerResponse)
-      wsEmitter.emit('message', messageData)
+      wsEmitter.emit('message', JSON.stringify(registerResponse))
+      wsEmitter.emit('message', JSON.stringify(challengeResponse))
 
       registerPromise
         .then(keys => {
