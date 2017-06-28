@@ -20,5 +20,5 @@ exports.getEventCountInTimespan = (sidecarId, startTime, endTime) => {
 const signEvent = (sidecarId, sequence, message, timestamp, signingKey) => {
   const signingObject = { sidecarId, sequence, message, timestamp: timestamp.toISOString() }
   const compactJSON = JSON.stringify(signingObject)
-  return SymmetricCrypto.sign(signingKey, compactJSON)
+  return SymmetricCrypto.sign(compactJSON, signingKey)
 }

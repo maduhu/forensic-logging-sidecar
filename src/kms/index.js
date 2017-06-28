@@ -8,6 +8,7 @@ const Logger = require('@leveloneproject/central-services-shared').Logger
 const KeepAlive = require('./keep-alive')
 const Errors = require('../errors')
 const SymmetricCrypto = require('../crypto/symmetric')
+const AsymmetricCrypto = require('../crypto/asymmetric')
 
 class KmsConnection extends EventEmitter {
   constructor (settings) {
@@ -106,8 +107,8 @@ class KmsConnection extends EventEmitter {
           })
 
           // Send challenge request to KMS.
-          const rowSignature = SymmetricCrypto.sign(rowKey, challenge)
-          const batchSignature = ''
+          const rowSignature = SymmetricCrypto.sign(challenge, rowKey)
+          const batchSignature = AsymmetricCrypto.sign(challenge, batchKey)
 
           this.sendRequest(challengeMessageId, 'challenge', { rowSignature, batchSignature })
         } else {

@@ -1,13 +1,15 @@
 'use strict'
 
+const src = '../../../src'
 const Test = require('tapes')(require('tape'))
 const Sinon = require('sinon')
 const EventEmitter = require('events')
 const Moment = require('moment')
 const Logger = require('@leveloneproject/central-services-shared').Logger
-const KeepAlive = require('../../../src/kms/keep-alive')
-const Errors = require('../../../src/errors')
-const SymmetricCrypto = require('../../../src/crypto/symmetric')
+const KeepAlive = require(`${src}/kms/keep-alive`)
+const Errors = require(`${src}/errors`)
+const SymmetricCrypto = require(`${src}/crypto/symmetric`)
+const AsymmetricCrypto = require(`${src}/crypto/asymmetric`)
 const Proxyquire = require('proxyquire')
 
 Test('KmsConnection', kmsConnTest => {
@@ -22,12 +24,13 @@ Test('KmsConnection', kmsConnTest => {
     sandbox.stub(Moment, 'utc')
     sandbox.stub(KeepAlive, 'create')
     sandbox.stub(SymmetricCrypto, 'sign')
+    sandbox.stub(AsymmetricCrypto, 'sign')
 
     keepAliveStub = { start: sandbox.stub(), stop: sandbox.stub() }
     KeepAlive.create.returns(keepAliveStub)
 
     wsStub = sandbox.stub()
-    KmsConnection = Proxyquire('../../../src/kms', { 'ws': wsStub })
+    KmsConnection = Proxyquire(`${src}/kms`, { 'ws': wsStub })
 
     t.end()
   })
@@ -180,8 +183,9 @@ Test('KmsConnection', kmsConnTest => {
       let registerResponse = { jsonrpc: '2.0', id: registerMessageId, result: { id: sidecarId, batchKey: 'batch-key', rowKey: 'row-key', challenge: 'challenge' } }
 
       const rowSignature = 'row-signature'
-      const batchSignature = ''
+      const batchSignature = 'batch-signature'
       SymmetricCrypto.sign.returns(rowSignature)
+      AsymmetricCrypto.sign.returns(batchSignature)
 
       let challengeMessageId = `challenge-${sidecarId}`
       let challengeRequest = { jsonrpc: '2.0', id: challengeMessageId, method: 'challenge', params: { rowSignature, batchSignature } }
@@ -200,7 +204,8 @@ Test('KmsConnection', kmsConnTest => {
           test.deepEqual(JSON.parse(wsEmitter.send.firstCall.args), registerRequest)
           test.deepEqual(JSON.parse(wsEmitter.send.secondCall.args), challengeRequest)
 
-          test.ok(SymmetricCrypto.sign.calledWith(registerResponse.result.rowKey, registerResponse.result.challenge))
+          test.ok(SymmetricCrypto.sign.calledWith(registerResponse.result.challenge, registerResponse.result.rowKey))
+          test.ok(AsymmetricCrypto.sign.calledWith(registerResponse.result.challenge, registerResponse.result.batchKey))
 
           test.equal(keys.batchKey, registerResponse.result.batchKey)
           test.equal(keys.rowKey, registerResponse.result.rowKey)

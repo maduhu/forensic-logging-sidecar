@@ -1,7 +1,9 @@
 'use strict'
 
 const AesCmac = require('node-aes-cmac').aesCmac
+const CryptoUtil = require('./util')
 
-exports.sign = (signingKey, message) => {
-  return AesCmac(Buffer.from(signingKey, 'hex'), message)
+exports.sign = (message, signingKey) => {
+  const keyBuffer = CryptoUtil.hexToBuffer(signingKey)
+  return AesCmac(keyBuffer, message)
 }

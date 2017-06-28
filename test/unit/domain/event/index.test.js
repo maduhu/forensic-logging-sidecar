@@ -54,7 +54,7 @@ Test('Events service', serviceTest => {
 
       Service.create(sidecarId, sequence, message, signingKey)
         .then(s => {
-          test.ok(SymmetricCrypto.sign.calledWith(signingKey, compactJSON))
+          test.ok(SymmetricCrypto.sign.calledWith(compactJSON, signingKey))
           test.ok(Model.create.calledWith(sandbox.match({
             eventId,
             sidecarId,
