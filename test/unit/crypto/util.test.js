@@ -41,5 +41,23 @@ Test('Crypto utilities', cryptoUtilTest => {
     hexBufferTest.end()
   })
 
+  cryptoUtilTest.test('uint8ArrayToHex should', uintHexTest => {
+    uintHexTest.test('conver UInt8Array to hex', test => {
+      let hex = '1f2f3f4f'
+      let uint8 = new Uint8Array(4)
+      uint8[0] = 0x1f
+      uint8[1] = 0x2f
+      uint8[2] = 0x3f
+      uint8[3] = 0x4f
+
+      let converted = CryptoUtil.uint8ArrayToHex(uint8)
+      test.equal(converted, hex)
+
+      test.end()
+    })
+
+    uintHexTest.end()
+  })
+
   cryptoUtilTest.end()
 })
