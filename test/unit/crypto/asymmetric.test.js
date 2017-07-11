@@ -38,12 +38,13 @@ Test('Asymmetric crypto', asymmetricTest => {
 
       let signature = 'signature'
       let hexSignature = '12bad535abf80ffc5bb40437b244e66101c8bf736e3bb22e297bbddc5a401fa5fe32dccd5b2d24a475efae51c751edaf742ee9168b4194370c7eb5097dcd0e0e35663637346231352d323339362d346635332d393961622d306234303631646265333434'
-      TweetNacl.sign.returns(signature)
+
+      TweetNacl.sign = { detached: sandbox.stub().returns(signature) }
       CryptoUtil.uint8ArrayToHex.returns(hexSignature)
 
       let s = Asymmetric.sign(message, privateKey)
       test.ok(CryptoUtil.hexToBuffer.calledWith(privateKey))
-      test.ok(TweetNacl.sign.calledWith(messageBuffer, privateKeyBuffer))
+      test.ok(TweetNacl.sign.detached.calledWith(messageBuffer, privateKeyBuffer))
       test.ok(CryptoUtil.uint8ArrayToHex.calledWith(signature))
       test.equal(s, hexSignature)
 
