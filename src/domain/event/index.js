@@ -1,24 +1,36 @@
 'use strict'
 
-const Uuid = require('uuid4')
 const Moment = require('moment')
 const Model = require('./model')
 const SymmetricCrypto = require('../../crypto/symmetric')
 
 exports.create = (sidecarId, sequence, message, signingKey) => {
-  const eventId = Uuid()
-  const timestamp = Moment.utc()
+  const created = Moment.utc()
 
-  const signature = signEvent(sidecarId, sequence, message, timestamp, signingKey)
-  return Model.create({ eventId, sidecarId, sequence, message, signature, created: timestamp })
+  let event = { sidecarId, sequence, message, created }
+  event.signature = createEventSignature(event, signingKey)
+
+  return Model.create(event)
 }
 
 exports.getEventCountInTimespan = (sidecarId, startTime, endTime) => {
   return Model.getEventCount(sidecarId, { startTime, endTime })
 }
 
-const signEvent = (sidecarId, sequence, message, timestamp, signingKey) => {
-  const signingObject = { sidecarId, sequence, message, timestamp: timestamp.toISOString() }
-  const compactJSON = JSON.stringify(signingObject)
-  return SymmetricCrypto.sign(compactJSON, signingKey)
+exports.getUnbatchedEventsByIds = (eventIds) => {
+  return Model.getUnbatchedEvents(eventIds)
+}
+
+exports.assignEventsToBatch = (events, batch) => {
+  const eventIds = events.map(e => e.eventId)
+  return Model.updateEvents(eventIds, { batchId: batch.batchId })
+}
+
+exports.getSignableEvent = ({ sidecarId, sequence, message, created }) => {
+  return { keyId: sidecarId, sequence, message, timestamp: created.toISOString() }
+}
+
+const createEventSignature = (event, signingKey) => {
+  const eventData = JSON.stringify(exports.getSignableEvent(event))
+  return SymmetricCrypto.sign(eventData, signingKey)
 }

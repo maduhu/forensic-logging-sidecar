@@ -6,26 +6,21 @@ const Sinon = require('sinon')
 const P = require('bluebird')
 const Uuid = require('uuid4')
 const Moment = require('moment')
-const Proxyquire = require('proxyquire')
 const Model = require(`${src}/domain/event/model`)
 const SymmetricCrypto = require(`${src}/crypto/symmetric`)
+const Service = require(`${src}/domain/event`)
 
 Test('Events service', serviceTest => {
   let sandbox
-  let eventId
-  let Service
 
   serviceTest.beforeEach((t) => {
     sandbox = Sinon.sandbox.create()
     sandbox.stub(Model, 'create')
     sandbox.stub(Model, 'getEventCount')
+    sandbox.stub(Model, 'getUnbatchedEvents')
+    sandbox.stub(Model, 'updateEvents')
     sandbox.stub(Moment, 'utc')
     sandbox.stub(SymmetricCrypto, 'sign')
-
-    eventId = Uuid()
-
-    Service = Proxyquire(`${src}/domain/event`, { 'uuid4': () => eventId })
-
     t.end()
   })
 
@@ -50,13 +45,12 @@ Test('Events service', serviceTest => {
 
       Moment.utc.returns(now)
 
-      let compactJSON = `{"sidecarId":"${sidecarId}","sequence":${sequence},"message":"${message}","timestamp":"${now.toISOString()}"}`
+      let compactJSON = `{"keyId":"${sidecarId}","sequence":${sequence},"message":"${message}","timestamp":"${now.toISOString()}"}`
 
       Service.create(sidecarId, sequence, message, signingKey)
         .then(s => {
           test.ok(SymmetricCrypto.sign.calledWith(compactJSON, signingKey))
           test.ok(Model.create.calledWith(sandbox.match({
-            eventId,
             sidecarId,
             sequence,
             message,
@@ -69,6 +63,24 @@ Test('Events service', serviceTest => {
     })
 
     createTest.end()
+  })
+
+  serviceTest.test('getUnbatchedEventsByIds should', getUnbatchedEventsByIdsTest => {
+    getUnbatchedEventsByIdsTest.test('get unbatched events from model', test => {
+      let eventIds = [1, 2]
+      let events = [{ eventId: eventIds[0] }, { eventId: eventIds[1] }]
+
+      Model.getUnbatchedEvents.returns(P.resolve(events))
+
+      Service.getUnbatchedEventsByIds(eventIds)
+        .then(found => {
+          test.equal(found, events)
+          test.ok(Model.getUnbatchedEvents.calledWith(eventIds))
+          test.end()
+        })
+    })
+
+    getUnbatchedEventsByIdsTest.end()
   })
 
   serviceTest.test('getEventCountInTimespan should', getEventCountTest => {
@@ -89,6 +101,26 @@ Test('Events service', serviceTest => {
     })
 
     getEventCountTest.end()
+  })
+
+  serviceTest.test('assignEventsToBatch should', assignEventsTest => {
+    assignEventsTest.test('update events with batch id', test => {
+      let batchId = 1
+      let batch = { batchId }
+      let events = [{ eventId: 1 }, { eventId: 2 }]
+      let updatedEvents = [{ eventId: 1, batchId }, { eventId: 2, batchId }]
+
+      Model.updateEvents.returns(P.resolve(updatedEvents))
+
+      Service.assignEventsToBatch(events, batch)
+        .then(e => {
+          test.equal(e, updatedEvents)
+          test.ok(Model.updateEvents.calledWith([1, 2], { batchId }))
+          test.end()
+        })
+    })
+
+    assignEventsTest.end()
   })
 
   serviceTest.end()

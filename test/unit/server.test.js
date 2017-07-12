@@ -9,14 +9,19 @@ const Db = require(`${src}/lib/db`)
 const Config = require(`${src}/lib/config`)
 const Migrator = require(`${src}/lib/migrator`)
 const Sidecar = require(`${src}/sidecar`)
+const Package = require('../../package')
 
 Test('Server', serverTest => {
   let sandbox
+  let oldPort
   let oldService
+  let oldBatchSize
   let oldKmsConfig
   let oldDatabaseUri
+  let port = 1234
+  let batchSize = 5
   let service = 'MyService'
-  let kmsConfig = { 'URL': 'ws://test.com' }
+  let kmsConfig = { 'URL': 'ws://test.com', 'PING_INTERVAL': 10000 }
   let databaseUri = 'some-database-uri'
 
   serverTest.beforeEach(t => {
@@ -27,12 +32,16 @@ Test('Server', serverTest => {
     sandbox.stub(Migrator, 'migrate')
     sandbox.stub(Logger)
 
+    oldPort = Config.PORT
     oldKmsConfig = Config.KMS
     oldService = Config.SERVICE
+    oldBatchSize = Config.BATCH_SIZE
     oldDatabaseUri = Config.DATABASE_URI
 
+    Config.PORT = port
     Config.KMS = kmsConfig
     Config.SERVICE = service
+    Config.BATCH_SIZE = batchSize
     Config.DATABASE_URI = databaseUri
 
     t.end()
@@ -41,7 +50,9 @@ Test('Server', serverTest => {
   serverTest.afterEach(t => {
     delete require.cache[require.resolve('../../src/server')]
     sandbox.restore()
+    Config.BATCH_SIZE = oldBatchSize
     Config.KMS = oldKmsConfig
+    Config.PORT = oldPort
     Config.SERVICE = oldService
     Config.DATABASE_URI = oldDatabaseUri
     t.end()
@@ -66,8 +77,12 @@ Test('Server', serverTest => {
         test.ok(Db.connect.calledWith(databaseUri))
         test.ok(Sidecar.create.calledOnce)
         test.ok(Sidecar.create.calledWith(sandbox.match({
-          SERVICE: service,
-          KMS: kmsConfig
+          port,
+          serviceName: service,
+          kmsUrl: kmsConfig.URL,
+          kmsPingInterval: kmsConfig.PING_INTERVAL,
+          version: Package.version,
+          batchSize
         })))
         test.ok(startStub.calledOnce)
         test.ok(Logger.info.calledWith(`Sidecar ${sidecar.id} for ${sidecar.service} connected to KMS and listening for messages on port ${sidecar.port}`))
@@ -92,7 +107,7 @@ Test('Server', serverTest => {
         test.end()
       })
       .catch(err => {
-        test.ok(Logger.error.calledWith(error))
+        test.ok(Logger.error.calledWith('Fatal error thrown by sidecar', error))
         test.ok(Db.disconnect.calledOnce)
         test.equal(err, error)
         test.end()

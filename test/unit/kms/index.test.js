@@ -42,11 +42,11 @@ Test('KmsConnection', kmsConnTest => {
 
   kmsConnTest.test('create should', createTest => {
     createTest.test('create new connection and set properties', test => {
-      let settings = { URL: 'ws://test.com', PING_INTERVAL: 5000 }
+      let settings = { url: 'ws://test.com', pingInterval: 5000 }
       let conn = KmsConnection.create(settings)
 
-      test.equal(conn._url, settings.URL)
-      test.equal(conn._pingInterval, settings.PING_INTERVAL)
+      test.equal(conn._url, settings.url)
+      test.equal(conn._pingInterval, settings.pingInterval)
       test.end()
     })
 
@@ -63,7 +63,7 @@ Test('KmsConnection', kmsConnTest => {
 
   kmsConnTest.test('connect should', connectTest => {
     connectTest.test('create websocket connection and resolve when open', test => {
-      let settings = { URL: 'ws://test.com', PING_INTERVAL: 5000 }
+      let settings = { url: 'ws://test.com', pingInterval: 5000 }
       let kmsConnection = KmsConnection.create(settings)
 
       let wsEmitter = new EventEmitter()
@@ -73,7 +73,7 @@ Test('KmsConnection', kmsConnTest => {
 
       let connectPromise = kmsConnection.connect()
       test.ok(wsStub.calledWithNew())
-      test.ok(wsStub.calledWith(settings.URL, sandbox.match({
+      test.ok(wsStub.calledWith(settings.url, sandbox.match({
         perMessageDeflate: false
       })))
       test.notOk(kmsConnection._connected)
@@ -93,14 +93,14 @@ Test('KmsConnection', kmsConnTest => {
           test.equal(wsEmitter.listenerCount('ping'), 1)
           test.equal(wsEmitter.listenerCount('pong'), 1)
           test.equal(wsEmitter.listenerCount('message'), 0)
-          test.ok(KeepAlive.create.calledWith(wsEmitter, settings.PING_INTERVAL))
+          test.ok(KeepAlive.create.calledWith(wsEmitter, settings.pingInterval))
           test.ok(keepAliveStub.start.calledOnce)
           test.end()
         })
     })
 
     connectTest.test('reject if error event emitted', test => {
-      let settings = { URL: 'ws://test.com' }
+      let settings = { url: 'ws://test.com' }
       let kmsConnection = KmsConnection.create(settings)
 
       let wsEmitter = new EventEmitter()
@@ -110,7 +110,7 @@ Test('KmsConnection', kmsConnTest => {
 
       let connectPromise = kmsConnection.connect()
       test.ok(wsStub.calledWithNew())
-      test.ok(wsStub.calledWith(settings.URL, sandbox.match({
+      test.ok(wsStub.calledWith(settings.url, sandbox.match({
         perMessageDeflate: false
       })))
       test.notOk(kmsConnection._connected)

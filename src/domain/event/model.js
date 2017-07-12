@@ -6,6 +6,10 @@ exports.create = (event) => {
   return Db.events.insert(event)
 }
 
+exports.getUnbatchedEvents = (eventIds) => {
+  return Db.events.find({ 'eventId': eventIds, 'batchId': null }, { order: 'eventId asc' })
+}
+
 exports.getEventCount = (sidecarId, { startTime = null, endTime = null } = {}) => {
   let criteria = { sidecarId }
 
@@ -17,4 +21,8 @@ exports.getEventCount = (sidecarId, { startTime = null, endTime = null } = {}) =
   }
 
   return Db.events.count(criteria, '*')
+}
+
+exports.updateEvents = (eventIds, fields) => {
+  return Db.events.update({ 'eventId': eventIds }, fields)
 }

@@ -16,7 +16,9 @@ Test('Events model', modelTest => {
 
     Db.events = {
       insert: sandbox.stub(),
-      count: sandbox.stub()
+      count: sandbox.stub(),
+      find: sandbox.stub(),
+      update: sandbox.stub()
     }
 
     t.end()
@@ -43,6 +45,24 @@ Test('Events model', modelTest => {
     })
 
     createTest.end()
+  })
+
+  modelTest.test('getUnbatchedEvents should', getUnbatchedEventsTest => {
+    getUnbatchedEventsTest.test('find unbatched events for array of ids', test => {
+      let eventIds = [1, 2]
+      let events = [{ eventId: eventIds[0] }, { eventId: eventIds[1] }]
+
+      Db.events.find.returns(P.resolve(events))
+
+      Model.getUnbatchedEvents(eventIds)
+        .then(found => {
+          test.equal(found, events)
+          test.ok(Db.events.find.calledWith({ eventId: eventIds, batchId: null }, { order: 'eventId asc' }))
+          test.end()
+        })
+    })
+
+    getUnbatchedEventsTest.end()
   })
 
   modelTest.test('getEventCount should', getEventCountTest => {
@@ -77,6 +97,26 @@ Test('Events model', modelTest => {
     })
 
     getEventCountTest.end()
+  })
+
+  modelTest.test('updateEvents should', updateEventsTest => {
+    updateEventsTest.test('update multiple events', test => {
+      let batchId = 1
+      let eventIds = [1, 2]
+      let fields = { batchId }
+      let updatedEvents = [{ eventId: eventIds[0], batchId }, { eventId: eventIds[1], batchId }]
+
+      Db.events.update.returns(P.resolve(updatedEvents))
+
+      Model.updateEvents(eventIds, fields)
+        .then(found => {
+          test.equal(found, updatedEvents)
+          test.ok(Db.events.update.calledWith({ eventId: eventIds }, fields))
+          test.end()
+        })
+    })
+
+    updateEventsTest.end()
   })
 
   modelTest.end()

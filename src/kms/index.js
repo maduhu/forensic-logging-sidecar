@@ -14,8 +14,8 @@ class KmsConnection extends EventEmitter {
   constructor (settings) {
     super()
 
-    this._url = settings.URL || 'ws://localhost:8080/sidecar'
-    this._pingInterval = settings.PING_INTERVAL || 30000
+    this._url = settings.url || 'ws://localhost:8080/sidecar'
+    this._pingInterval = settings.pingInterval || 30000
     this._connected = false
   }
 
