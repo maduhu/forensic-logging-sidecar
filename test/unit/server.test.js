@@ -21,7 +21,7 @@ Test('Server', serverTest => {
   let port = 1234
   let batchSize = 5
   let service = 'MyService'
-  let kmsConfig = { 'URL': 'ws://test.com', 'PING_INTERVAL': 10000 }
+  let kmsConfig = { 'URL': 'ws://test.com', 'PING_INTERVAL': 10000, 'REQUEST_TIMEOUT': 15000 }
   let databaseUri = 'some-database-uri'
 
   serverTest.beforeEach(t => {
@@ -81,6 +81,7 @@ Test('Server', serverTest => {
           serviceName: service,
           kmsUrl: kmsConfig.URL,
           kmsPingInterval: kmsConfig.PING_INTERVAL,
+          kmsRequestTimeout: kmsConfig.REQUEST_TIMEOUT,
           version: Package.version,
           batchSize
         })))

@@ -5,6 +5,7 @@ const WS = require('ws')
 const Moment = require('moment')
 const EventEmitter = require('events')
 const Logger = require('@leveloneproject/central-services-shared').Logger
+const Requests = require('./requests')
 const KeepAlive = require('./keep-alive')
 const Errors = require('../errors')
 const SymmetricCrypto = require('../crypto/symmetric')
@@ -16,6 +17,9 @@ class KmsConnection extends EventEmitter {
 
     this._url = settings.url || 'ws://localhost:8080/sidecar'
     this._pingInterval = settings.pingInterval || 30000
+    this._timeout = settings.requestTimeout || 5000
+
+    this._pendingRequests = Requests.create({ timeout: this._timeout })
     this._connected = false
   }
 
@@ -44,6 +48,7 @@ class KmsConnection extends EventEmitter {
         // Attach the regular event listeners.
         this._ws.on('close', this._wsOnClose.bind(this))
         this._ws.on('error', this._wsOnError.bind(this))
+        this._ws.on('message', this._wsOnMessage.bind(this))
 
         // Setup ping/pong.
         this._ws.on('ping', this._wsOnPing.bind(this))
@@ -60,78 +65,51 @@ class KmsConnection extends EventEmitter {
   }
 
   register (sidecarId, serviceName) {
-    return new P((resolve, reject) => {
+    return P.try(() => {
       if (!this._connected) {
-        return reject(new Error('You must connect before registering'))
+        throw new Error('You must connect before registering')
       }
 
-      const registerMessageId = `register-${sidecarId}`
-
-      // Setup one-time message handler to process registration response.
-      this._ws.once('message', (registerData, registerFlags) => {
-        Logger.info('Received initial KMS registration response')
-
-        const registerResponse = JSON.parse(registerData)
-        if (registerResponse.id === registerMessageId) {
-          if (registerResponse.error) {
-            return reject(new Errors.KmsRegistrationError(`Error received during KMS registration: ${registerResponse.error.id} - ${registerResponse.error.message}`))
-          }
-
-          const rowKey = registerResponse.result.rowKey
-          const batchKey = registerResponse.result.batchKey
-          const challenge = registerResponse.result.challenge
-
-          const challengeMessageId = `challenge-${sidecarId}`
-
-          // Setup one-time message handler to process challenge response.
-          this._ws.once('message', (challengeData, challengeFlags) => {
-            Logger.info('Received KMS registration challenge response')
-
-            const challengeResponse = JSON.parse(challengeData)
-            if (challengeResponse.id === challengeMessageId) {
-              if (challengeResponse.error) {
-                return reject(new Errors.KmsRegistrationError(`Error received during KMS challenge: ${challengeResponse.error.id} - ${challengeResponse.error.message}`))
-              }
-
-              if (challengeResponse.result.status.toUpperCase() !== 'OK') {
-                return reject(new Errors.KmsRegistrationError(`Received invalid status from KMS during challenge: ${challengeResponse.result.status}`))
-              }
-
-              // Set the message handler to the default.
-              this._ws.on('message', this._wsOnMessage.bind(this))
-
-              resolve({ batchKey, rowKey })
-            } else {
-              reject(new Errors.KmsRegistrationError(`Received non-challenge message from KMS during challenge: ${challengeData}`))
-            }
-          })
+      return this.request('register', { id: sidecarId, serviceName })
+        .then(registerResponse => {
+          const rowKey = registerResponse.rowKey
+          const batchKey = registerResponse.batchKey
+          const challenge = registerResponse.challenge
 
           // Send challenge request to KMS.
           const rowSignature = SymmetricCrypto.sign(challenge, rowKey)
           const batchSignature = AsymmetricCrypto.sign(challenge, batchKey)
 
-          this.sendRequest(challengeMessageId, 'challenge', { rowSignature, batchSignature })
-        } else {
-          Logger.error()
-          reject(new Errors.KmsRegistrationError(`Received non-register message from KMS during registration: ${registerData}`))
-        }
-      })
+          return this.request('challenge', { rowSignature, batchSignature })
+            .then(challengeResponse => {
+              if (challengeResponse.status.toUpperCase() !== 'OK') {
+                return P.reject(new Errors.KmsRegistrationError(`Received invalid status from KMS during challenge: ${challengeResponse.status}`))
+              }
 
-      // Send initial registration request to KMS.
-      this.sendRequest(registerMessageId, 'register', { id: sidecarId, serviceName })
+              return { batchKey, rowKey }
+            })
+        })
     })
   }
 
-  sendRequest (id, method, params) {
-    this._ws.send(this._buildJsonRPCMessage(id, { method, params }))
+  request (method, params) {
+    return this._pendingRequests.start(id => {
+      this._ws.send(this._buildJsonRpcMessage(id, { method, params }))
+    })
+    .then(response => {
+      if (response.error) {
+        return P.reject(new Errors.KmsResponseError(response.error.id, response.error.message))
+      }
+      return response.result
+    })
   }
 
-  sendResponse (id, data) {
-    this._ws.send(this._buildJsonRPCMessage(id, { result: data }))
+  respond (request, result) {
+    this._ws.send(this._buildJsonRpcMessage(request.id, { result }))
   }
 
-  sendErrorResponse (id, error) {
-    this._ws.send(this._buildJsonRPCMessage(id, { error }))
+  respondError (request, error) {
+    this._ws.send(this._buildJsonRpcMessage(request.id, { error }))
   }
 
   _cleanup () {
@@ -139,7 +117,15 @@ class KmsConnection extends EventEmitter {
     this._keepAlive.stop()
   }
 
-  _buildJsonRPCMessage (id, data) {
+  _isJsonRpc (data) {
+    return data.jsonrpc && data.jsonrpc === '2.0'
+  }
+
+  _isJsonRpcRequest (data) {
+    return this._isJsonRpc(data) && data.method
+  }
+
+  _buildJsonRpcMessage (id, data) {
     data['id'] = id
     data['jsonrpc'] = '2.0'
     return JSON.stringify(data)
@@ -158,8 +144,27 @@ class KmsConnection extends EventEmitter {
 
   _wsOnMessage (data, flags) {
     let parsed = JSON.parse(data)
-    if (parsed.method === 'healthcheck') {
-      this.emit('healthCheck', { id: parsed.id, level: parsed.params.level })
+
+    if (this._isJsonRpc(parsed)) {
+      let id = parsed.id
+
+      if (this._isJsonRpcRequest(parsed)) {
+        // This is a request from the KMS, emit the appropriate event.
+        if (parsed.method === 'healthcheck') {
+          this.emit('healthCheck', { id, level: parsed.params.level })
+        } else {
+          Logger.warn(`Unhandled request from KMS received: ${data}`)
+        }
+      } else {
+        if (this._pendingRequests.exists(id)) {
+          // This is a response to a pending request, resolve with the parsed response.
+          this._pendingRequests.complete(id, { result: parsed.result, error: parsed.error })
+        } else {
+          Logger.warn(`Unknown response sent for id ${id}: ${data}`)
+        }
+      }
+    } else {
+      Logger.warn(`Invalid message format received from KMS: ${data}`)
     }
   }
 

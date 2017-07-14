@@ -21,7 +21,7 @@ class Sidecar {
 
     this._sequence = 0
 
-    this._kmsConnection = KmsConnection.create({ url: settings.kmsUrl, pingInterval: settings.kmsPingInterval })
+    this._kmsConnection = KmsConnection.create({ url: settings.kmsUrl, pingInterval: settings.kmsPingInterval, requestTimeout: settings.kmsRequestTimeout })
     this._kmsConnection.on('healthCheck', this._onHealthCheckRequest.bind(this))
 
     this._socketListener = SocketListener.create()
@@ -42,10 +42,12 @@ class Sidecar {
   }
 
   _onHealthCheckRequest (request) {
-    Logger.info(`Received KMS health check request ${JSON.stringify(request)}`)
+    Logger.info(`Received ${request.level} health check request ${request.id} from KMS`)
     if (request.level === 'ping') {
-      HealthCheck.ping(this)
-        .then(hc => this._kmsConnection.sendResponse(request.id, hc))
+      HealthCheck.ping(this).then(hc => {
+        Logger.info(`Sending ping health check response ${request.id} to KMS`)
+        this._kmsConnection.respond(request, hc)
+      })
     }
   }
 
@@ -63,7 +65,10 @@ class Sidecar {
     BatchService.create(this.id, eventIds, this._batchKey)
       .then(batch => {
         Logger.info(`Created batch ${batch.batchExternalId} of ${eventIds.length} events`)
+        return this._kmsConnection.request('batch', { 'id': batch.batchExternalId, 'signature': batch.signature })
       })
+      .then(response => Logger.info(`Sent batch ${response.id} successfully to KMS`))
+      .catch(e => Logger.error('Error received while creating batch and sending to KMS', e))
   }
 }
 

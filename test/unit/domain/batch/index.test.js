@@ -13,7 +13,7 @@ const Proxyquire = require('proxyquire')
 
 Test('Batch service', serviceTest => {
   let sandbox
-  let batchExternalId
+  let uuidStub
   let Service
 
   serviceTest.beforeEach((t) => {
@@ -25,9 +25,9 @@ Test('Batch service', serviceTest => {
     sandbox.stub(Moment, 'utc')
     sandbox.stub(AsymmetricCrypto, 'sign')
 
-    batchExternalId = Uuid()
+    uuidStub = sandbox.stub()
 
-    Service = Proxyquire(`${src}/domain/batch`, { 'uuid4': () => batchExternalId })
+    Service = Proxyquire(`${src}/domain/batch`, { 'uuid4': uuidStub })
 
     t.end()
   })
@@ -40,9 +40,12 @@ Test('Batch service', serviceTest => {
   serviceTest.test('create should', createTest => {
     createTest.test('create batch and update events', test => {
       let sidecarId = Uuid()
+      let batchExternalId = Uuid()
       let eventIds = [1, 2]
       let signingKey = 'DFDE22A3276FC520A24FBE5534EDADFE080D78375C4530E038EFCF6CA699228A'
       let now = Moment()
+
+      uuidStub.returns(batchExternalId)
 
       let savedBatch = {}
       Model.create.returns(P.resolve(savedBatch))

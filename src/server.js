@@ -28,7 +28,8 @@ const buildSidecarSettings = () => {
     batchSize: Config.BATCH_SIZE,
     version: Package.version,
     kmsUrl: Config.KMS.URL,
-    kmsPingInterval: Config.KMS.PING_INTERVAL
+    kmsPingInterval: Config.KMS.PING_INTERVAL,
+    kmsRequestTimeout: Config.KMS.REQUEST_TIMEOUT
   }
 }
 
