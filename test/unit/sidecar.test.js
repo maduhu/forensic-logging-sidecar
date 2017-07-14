@@ -30,6 +30,7 @@ Test('Sidecar', sidecarTest => {
     sandbox.stub(SocketListener, 'create')
     sandbox.stub(EventService, 'create')
     sandbox.stub(BatchService, 'create')
+    sandbox.stub(BatchService, 'findForTimespan')
 
     uuidStub = sandbox.stub()
 
@@ -127,6 +128,53 @@ Test('Sidecar', sidecarTest => {
     startTest.end()
   })
 
+  sidecarTest.test('receving KMS inquiry event should', inquiryTest => {
+    inquiryTest.test('find batches for inquiry and log response', test => {
+      let connectStub = sandbox.stub()
+      connectStub.returns(P.resolve())
+
+      let keys = { batchKey: 'batch', rowKey: 'row' }
+      let registerStub = sandbox.stub()
+      registerStub.returns(P.resolve(keys))
+
+      let kmsConnection = new EventEmitter()
+      kmsConnection.connect = connectStub
+      kmsConnection.register = registerStub
+      kmsConnection.respond = sandbox.stub().returns(P.resolve())
+      KmsConnection.create.returns(kmsConnection)
+
+      SocketListener.create.returns({ 'on': sandbox.stub(), listen: sandbox.stub() })
+
+      BatchTracker.create.returns({ 'on': sandbox.stub() })
+
+      let found = [{}]
+      let findPromise = P.resolve(found)
+      BatchService.findForTimespan.returns(findPromise)
+
+      let settings = { serviceName: 'test-service', kmsUrl: 'ws://test.com', kmsPingInterval: 30000, port: 1234, batchSize: 50, version: '1.2.3' }
+      let sidecar = Sidecar.create(settings)
+
+      let now = Moment()
+      let start = Moment(now).subtract(1, 'month')
+
+      let request = { id: 'id', inquiryId: 'inquiry-id', startTime: start.toISOString(), endTime: now.toISOString() }
+      sidecar.start()
+        .then(() => {
+          kmsConnection.emit('inquiry', request)
+
+          findPromise
+            .then(() => {
+              test.ok(Logger.info.calledWith(`Received inquiry ${request.inquiryId} from KMS`))
+              test.ok(BatchService.findForTimespan.calledWith(request.startTime, request.endTime))
+              test.ok(Logger.info.calledWith(`Found ${found.length} batches for inquiry ${request.inquiryId}`))
+              test.end()
+            })
+        })
+    })
+
+    inquiryTest.end()
+  })
+
   sidecarTest.test('receving KMS healthCheck event should', healthCheckTest => {
     healthCheckTest.test('run healthcheck and send response to KMS if ping', test => {
       let connectStub = sandbox.stub()
@@ -170,7 +218,7 @@ Test('Sidecar', sidecarTest => {
         })
     })
 
-    healthCheckTest.test('do not run healthcheck if healtcheck is not ping', test => {
+    healthCheckTest.test('do not run healthcheck if level is not ping', test => {
       let connectStub = sandbox.stub()
       connectStub.returns(P.resolve())
 

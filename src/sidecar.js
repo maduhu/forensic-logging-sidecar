@@ -22,6 +22,7 @@ class Sidecar {
     this._sequence = 0
 
     this._kmsConnection = KmsConnection.create({ url: settings.kmsUrl, pingInterval: settings.kmsPingInterval, requestTimeout: settings.kmsRequestTimeout })
+    this._kmsConnection.on('inquiry', this._onInquiryRequest.bind(this))
     this._kmsConnection.on('healthCheck', this._onHealthCheckRequest.bind(this))
 
     this._socketListener = SocketListener.create()
@@ -39,6 +40,12 @@ class Sidecar {
         this._rowKey = keys.rowKey
       })
       .then(() => this._socketListener.listen(this.port))
+  }
+
+  _onInquiryRequest (request) {
+    Logger.info(`Received inquiry ${request.inquiryId} from KMS`)
+    BatchService.findForTimespan(request.startTime, request.endTime)
+      .then(found => Logger.info(`Found ${found.length} batches for inquiry ${request.inquiryId}`))
   }
 
   _onHealthCheckRequest (request) {

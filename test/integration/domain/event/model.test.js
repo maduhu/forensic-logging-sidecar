@@ -115,7 +115,7 @@ Test('events model', modelTest => {
       Model.create(event)
         .then(() => Model.create(event2))
         .then(() => Model.create(event3))
-        .then(() => Model.getEventCount(event.sidecarId, { startTime: lastHour, endTime: now }))
+        .then(() => Model.getEventCount(event.sidecarId, { startTime: lastHour.toISOString(), endTime: now.toISOString() }))
         .then(count => {
           test.equal(count, 2)
           test.end()

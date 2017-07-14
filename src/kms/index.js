@@ -150,10 +150,15 @@ class KmsConnection extends EventEmitter {
 
       if (this._isJsonRpcRequest(parsed)) {
         // This is a request from the KMS, emit the appropriate event.
-        if (parsed.method === 'healthcheck') {
-          this.emit('healthCheck', { id, level: parsed.params.level })
-        } else {
-          Logger.warn(`Unhandled request from KMS received: ${data}`)
+        switch (parsed.method.toLowerCase()) {
+          case 'healthcheck':
+            this.emit('healthCheck', { id, level: parsed.params.level })
+            break
+          case 'inquiry':
+            this.emit('inquiry', { id, inquiryId: parsed.params.inquiry, startTime: parsed.params.startTime, endTime: parsed.params.endTime })
+            break
+          default:
+            Logger.warn(`Unhandled request from KMS received: ${data}`)
         }
       } else {
         if (this._pendingRequests.exists(id)) {

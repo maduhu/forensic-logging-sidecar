@@ -590,6 +590,39 @@ Test('KmsConnection', kmsConnTest => {
         })
     })
 
+    messageEventTest.test('emit inquiry event for inquiry request method', test => {
+      let inquirySpy = sandbox.spy()
+
+      let kmsConnection = KmsConnection.create()
+      kmsConnection.on('inquiry', inquirySpy)
+
+      let wsEmitter = new EventEmitter()
+      wsStub.returns(wsEmitter)
+
+      let connectPromise = kmsConnection.connect()
+      wsEmitter.emit('open')
+
+      const now = Moment()
+      const start = Moment(now).subtract(15, 'days')
+
+      const endTime = now.toISOString()
+      const startTime = start.toISOString()
+
+      connectPromise
+        .then(() => {
+          let inquiry = { jsonrpc: '2.0', id: 'e1c609bd-e147-460b-ae61-98264bc935ad', method: 'inquiry', params: { inquiry: '4e4f2a70-e0d6-42dc-9efb-6d23060ccd6f', startTime, endTime } }
+          wsEmitter.emit('message', JSON.stringify(inquiry))
+
+          test.ok(inquirySpy.calledWith(sandbox.match({
+            id: inquiry.id,
+            inquiryId: inquiry.params.inquiry,
+            startTime,
+            endTime
+          })))
+          test.end()
+        })
+    })
+
     messageEventTest.test('log warning for unknown request method', test => {
       let kmsConnection = KmsConnection.create()
 

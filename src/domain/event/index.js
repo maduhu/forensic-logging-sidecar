@@ -2,6 +2,7 @@
 
 const Moment = require('moment')
 const Model = require('./model')
+const Util = require('../../lib/util')
 const SymmetricCrypto = require('../../crypto/symmetric')
 
 exports.create = (sidecarId, sequence, message, signingKey) => {
@@ -14,6 +15,12 @@ exports.create = (sidecarId, sequence, message, signingKey) => {
 }
 
 exports.getEventCountInTimespan = (sidecarId, startTime, endTime) => {
+  if (!Util.isString(startTime)) {
+    startTime = startTime.toISOString()
+  }
+  if (!Util.isString(endTime)) {
+    endTime = endTime.toISOString()
+  }
   return Model.getEventCount(sidecarId, { startTime, endTime })
 }
 

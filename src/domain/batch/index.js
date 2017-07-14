@@ -4,6 +4,7 @@ const Uuid = require('uuid4')
 const Moment = require('moment')
 const Model = require('./model')
 const EventService = require('../event')
+const Util = require('../../lib/util')
 const AsymmetricCrypto = require('../../crypto/asymmetric')
 
 exports.create = (sidecarId, eventIds, signingKey) => {
@@ -18,6 +19,16 @@ exports.create = (sidecarId, eventIds, signingKey) => {
       return Model.create({ batchExternalId, sidecarId, data: batchData, signature, created })
         .then(batch => EventService.assignEventsToBatch(unbatchedEvents, batch).return(batch))
     })
+}
+
+exports.findForTimespan = (startTime, endTime) => {
+  if (!Util.isString(startTime)) {
+    startTime = startTime.toISOString()
+  }
+  if (!Util.isString(endTime)) {
+    endTime = endTime.toISOString()
+  }
+  return Model.findForTimespan(startTime, endTime)
 }
 
 const buildBatchData = (events) => {

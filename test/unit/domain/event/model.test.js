@@ -86,12 +86,15 @@ Test('Events model', modelTest => {
       let start = Moment.utc(now).subtract(5, 'minutes')
       let sidecarId = 'sidecar-id'
 
+      let startTime = start.toISOString()
+      let endTime = now.toISOString()
+
       Db.events.count.returns(P.resolve(count))
 
-      Model.getEventCount(sidecarId, { startTime: start, endTime: now })
+      Model.getEventCount(sidecarId, { startTime, endTime })
         .then(c => {
           test.equal(c, count)
-          test.ok(Db.events.count.calledWith(sandbox.match({ sidecarId, 'created >=': start, 'created <=': now }), '*'))
+          test.ok(Db.events.count.calledWith(sandbox.match({ sidecarId, 'created >=': startTime, 'created <=': endTime }), '*'))
           test.end()
         })
     })

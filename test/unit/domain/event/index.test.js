@@ -92,10 +92,32 @@ Test('Events service', serviceTest => {
 
       Model.getEventCount.returns(P.resolve(count))
 
+      const startTime = start.toISOString()
+      const endTime = now.toISOString()
+
+      Service.getEventCountInTimespan(sidecarId, startTime, endTime)
+        .then(c => {
+          test.equal(c, count)
+          test.ok(Model.getEventCount.calledWith(sidecarId, sandbox.match({ startTime, endTime })))
+          test.end()
+        })
+    })
+
+    getEventCountTest.test('convert dates to strings before calling model', test => {
+      let now = Moment()
+      let start = Moment(now).subtract(5, 'minutes')
+      let sidecarId = 'sidecar-id'
+      let count = 6
+
+      Model.getEventCount.returns(P.resolve(count))
+
+      const startTime = start.toISOString()
+      const endTime = now.toISOString()
+
       Service.getEventCountInTimespan(sidecarId, start, now)
         .then(c => {
           test.equal(c, count)
-          test.ok(Model.getEventCount.calledWith(sidecarId, sandbox.match({ startTime: start, endTime: now })))
+          test.ok(Model.getEventCount.calledWith(sidecarId, sandbox.match({ startTime, endTime })))
           test.end()
         })
     })
