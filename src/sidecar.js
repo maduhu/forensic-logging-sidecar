@@ -48,17 +48,23 @@ class Sidecar {
 
   _onInquiryRequest (request) {
     Logger.info(`Received inquiry ${request.inquiryId} from KMS`)
-    BatchService.findForService(this.service, request.startTime, request.endTime)
-      .then(found => Logger.info(`Found ${found.length} batches for inquiry ${request.inquiryId}`))
+    BatchService
+      .findForService(this.service, request.startTime, request.endTime)
+      .then(results => {
+        this._kmsConnection.respondToInquiry(request, results)
+        Logger.info(`Sent ${results.length} batches to KMS for inquiry ${request.inquiryId}`)
+      })
   }
 
   _onHealthCheckRequest (request) {
     Logger.info(`Received ${request.level} health check request ${request.id} from KMS`)
     if (request.level === 'ping') {
-      HealthCheck.ping(this).then(hc => {
-        Logger.info(`Sending ping health check response ${request.id} to KMS`)
-        this._kmsConnection.respond(request, hc)
-      })
+      HealthCheck
+        .ping(this)
+        .then(hc => {
+          this._kmsConnection.respondToHealthCheck(request, hc)
+          Logger.info(`Sent health check response ${request.id} successfully to KMS`)
+        })
     }
   }
 
@@ -73,13 +79,11 @@ class Sidecar {
   }
 
   _onBatchReady (eventIds) {
-    BatchService.create(this.id, eventIds, this._batchKey)
-      .then(batch => {
-        Logger.info(`Created batch ${batch.batchId} of ${eventIds.length} events`)
-        return this._kmsConnection.request('batch', { 'id': batch.batchId, 'signature': batch.signature })
-      })
-      .then(response => Logger.info(`Sent batch ${response.id} successfully to KMS`))
-      .catch(e => Logger.error('Error received while creating batch and sending to KMS', e))
+    BatchService
+      .create(this.id, eventIds, this._batchKey)
+      .then(batch => this._kmsConnection.sendBatch(batch))
+      .then(result => Logger.info(`Sent batch ${result.id} successfully to KMS`))
+      .catch(e => Logger.error('Error while creating batch and sending to KMS', e))
   }
 }
 

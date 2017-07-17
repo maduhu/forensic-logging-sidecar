@@ -48,7 +48,7 @@ Test('Events model', modelTest => {
   })
 
   modelTest.test('getUnbatchedEvents should', getUnbatchedEventsTest => {
-    getUnbatchedEventsTest.test('find unbatched events for array of ids', test => {
+    getUnbatchedEventsTest.test('find unbatched events for array of ids and order by sequence', test => {
       let eventIds = [1, 2]
       let events = [{ eventId: eventIds[0] }, { eventId: eventIds[1] }]
 
@@ -57,7 +57,7 @@ Test('Events model', modelTest => {
       Model.getUnbatchedEvents(eventIds)
         .then(found => {
           test.equal(found, events)
-          test.ok(Db.events.find.calledWith({ eventId: eventIds, batchId: null }))
+          test.ok(Db.events.find.calledWith({ eventId: eventIds, batchId: null }, { order: 'sequence asc' }))
           test.end()
         })
     })

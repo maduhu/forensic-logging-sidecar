@@ -138,7 +138,7 @@ Test('Sidecar', sidecarTest => {
   })
 
   sidecarTest.test('receving KMS inquiry event should', inquiryTest => {
-    inquiryTest.test('find batches for inquiry and log response', test => {
+    inquiryTest.test('find batches for inquiry and send to KMS', test => {
       let connectStub = sandbox.stub()
       connectStub.returns(P.resolve())
 
@@ -149,16 +149,21 @@ Test('Sidecar', sidecarTest => {
       let kmsConnection = new EventEmitter()
       kmsConnection.connect = connectStub
       kmsConnection.register = registerStub
-      kmsConnection.respond = sandbox.stub().returns(P.resolve())
+      kmsConnection.respondToInquiry = sandbox.stub().returns(P.resolve())
       KmsConnection.create.returns(kmsConnection)
 
       SocketListener.create.returns({ 'on': sandbox.stub(), listen: sandbox.stub() })
 
       BatchTracker.create.returns({ 'on': sandbox.stub() })
 
-      let found = [{}]
+      let found = [{ batchId: 'batch1', data: 'data' }, { batchId: 'batch2', data: 'data2' }]
       let findPromise = P.resolve(found)
       BatchService.findForService.returns(findPromise)
+
+      let sendId = 'send-id'
+      let sendId2 = 'send-id2'
+      uuidStub.onSecondCall().returns(sendId)
+      uuidStub.onThirdCall().returns(sendId2)
 
       SidecarService.create.returns(P.resolve())
 
@@ -177,7 +182,8 @@ Test('Sidecar', sidecarTest => {
             .then(() => {
               test.ok(Logger.info.calledWith(`Received inquiry ${request.inquiryId} from KMS`))
               test.ok(BatchService.findForService.calledWith(sidecar.service, request.startTime, request.endTime))
-              test.ok(Logger.info.calledWith(`Found ${found.length} batches for inquiry ${request.inquiryId}`))
+              test.ok(kmsConnection.respondToInquiry.calledWith(request, found))
+              test.ok(Logger.info.calledWith(`Sent ${found.length} batches to KMS for inquiry ${request.inquiryId}`))
               test.end()
             })
         })
@@ -198,7 +204,7 @@ Test('Sidecar', sidecarTest => {
       let kmsConnection = new EventEmitter()
       kmsConnection.connect = connectStub
       kmsConnection.register = registerStub
-      kmsConnection.respond = sandbox.stub().returns(P.resolve())
+      kmsConnection.respondToHealthCheck = sandbox.stub().returns(P.resolve())
       KmsConnection.create.returns(kmsConnection)
 
       SocketListener.create.returns({ 'on': sandbox.stub(), listen: sandbox.stub() })
@@ -223,9 +229,7 @@ Test('Sidecar', sidecarTest => {
             .then(() => {
               test.ok(Logger.info.calledWith(`Received ${request.level} health check request ${request.id} from KMS`))
               test.ok(HealthCheck.ping.calledWith(sidecar))
-              test.ok(Logger.info.calledWith(`Sending ping health check response ${request.id} to KMS`))
-              test.ok(kmsConnection.respond.calledOnce)
-              test.ok(kmsConnection.respond.calledWith(request, healthCheck))
+              test.ok(kmsConnection.respondToHealthCheck.calledWith(request, healthCheck))
               test.end()
             })
         })
@@ -329,9 +333,9 @@ Test('Sidecar', sidecarTest => {
 
       let kmsBatchResponse = { result: { id: batchId } }
       let kmsBatchPromise = P.resolve(kmsBatchResponse)
-      let requestStub = sandbox.stub().returns(kmsBatchPromise)
+      let sendBatchStub = sandbox.stub().returns(kmsBatchPromise)
 
-      KmsConnection.create.returns({ connect: connectStub, register: registerStub, request: requestStub, 'on': sandbox.stub() })
+      KmsConnection.create.returns({ connect: connectStub, register: registerStub, sendBatch: sendBatchStub, 'on': sandbox.stub() })
 
       SocketListener.create.returns({ 'on': sandbox.stub(), listen: sandbox.stub() })
 
@@ -358,11 +362,7 @@ Test('Sidecar', sidecarTest => {
             .then(() => kmsBatchPromise)
             .then(() => {
               test.ok(BatchService.create.calledWith(sidecar.id, batchEventIds, keys.batchKey))
-              test.ok(Logger.info.calledWith(`Created batch ${batch.batchId} of ${batchEventIds.length} events`))
-              test.ok(requestStub.calledWith('batch', sandbox.match({
-                id: batchId,
-                signature: batchSignature
-              })))
+              test.ok(sendBatchStub.calledWith(batch))
               test.ok(Logger.info.calledWith(`Sent batch ${kmsBatchResponse.id} successfully to KMS`))
               test.end()
             })
@@ -382,9 +382,9 @@ Test('Sidecar', sidecarTest => {
 
       let err = new Error('error sending batch')
       let kmsBatchPromise = P.reject(err)
-      let requestStub = sandbox.stub().returns(kmsBatchPromise)
+      let sendBatchStub = sandbox.stub().returns(kmsBatchPromise)
 
-      KmsConnection.create.returns({ connect: connectStub, register: registerStub, request: requestStub, 'on': sandbox.stub() })
+      KmsConnection.create.returns({ connect: connectStub, register: registerStub, sendBatch: sendBatchStub, 'on': sandbox.stub() })
 
       SocketListener.create.returns({ 'on': sandbox.stub(), listen: sandbox.stub() })
 
@@ -415,7 +415,7 @@ Test('Sidecar', sidecarTest => {
             })
             .catch(e => {
               test.equal(e.message, err.message)
-              test.ok(Logger.error.calledWith('Error received while creating batch and sending to KMS', e))
+              test.ok(Logger.error.calledWith('Error while creating batch and sending to KMS', e))
               test.end()
             })
         })

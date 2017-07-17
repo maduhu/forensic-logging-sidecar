@@ -196,8 +196,6 @@ Test('KmsConnection', kmsConnTest => {
           let serviceName = 'TestSidecar'
 
           let registerMessageId = `register-${sidecarId}`
-          uuidStub.onFirstCall().returns(registerMessageId)
-
           let registerRequest = { jsonrpc: '2.0', id: registerMessageId, method: 'register', params: { id: sidecarId, serviceName } }
           let registerResponse = { jsonrpc: '2.0', id: registerMessageId, result: { id: sidecarId, batchKey: 'batch-key', rowKey: 'row-key', challenge: 'challenge' } }
 
@@ -207,8 +205,6 @@ Test('KmsConnection', kmsConnTest => {
           AsymmetricCrypto.sign.returns(batchSignature)
 
           let challengeMessageId = `challenge-${sidecarId}`
-          uuidStub.onSecondCall().returns(challengeMessageId)
-
           let challengeRequest = { jsonrpc: '2.0', id: challengeMessageId, method: 'challenge', params: { rowSignature, batchSignature } }
           let challengeResponse = { jsonrpc: '2.0', id: challengeMessageId, result: { status: 'ok' } }
 
@@ -252,8 +248,6 @@ Test('KmsConnection', kmsConnTest => {
           let sidecarId = 'sidecar1'
 
           let registerMessageId = `register-${sidecarId}`
-          uuidStub.returns(registerMessageId)
-
           let registerResponse = { jsonrpc: '2.0', id: registerMessageId, error: { id: 101, message: 'bad stuff' } }
 
           requestStartStub.onFirstCall().callsArgWith(0, registerMessageId)
@@ -292,13 +286,9 @@ Test('KmsConnection', kmsConnTest => {
           let sidecarId = 'sidecar1'
 
           let registerMessageId = `register-${sidecarId}`
-          uuidStub.onFirstCall().returns(registerMessageId)
-
           let registerResponse = { jsonrpc: '2.0', id: registerMessageId, result: { id: sidecarId, batchKey: 'batch-key', rowKey: 'row-key', challenge: 'challenge' } }
 
           let challengeMessageId = `challenge-${sidecarId}`
-          uuidStub.onSecondCall().returns(challengeMessageId)
-
           let challengeResponse = { jsonrpc: '2.0', id: challengeMessageId, error: { id: 105, message: 'bad challenge' } }
 
           requestStartStub.onFirstCall().callsArgWith(0, registerMessageId)
@@ -339,13 +329,9 @@ Test('KmsConnection', kmsConnTest => {
           let sidecarId = 'sidecar1'
 
           let registerMessageId = `register-${sidecarId}`
-          uuidStub.onFirstCall().returns(registerMessageId)
-
           let registerResponse = { jsonrpc: '2.0', id: registerMessageId, result: { id: sidecarId, batchKey: 'batch-key', rowKey: 'row-key', challenge: 'challenge' } }
 
           let challengeMessageId = `challenge-${sidecarId}`
-          uuidStub.onSecondCall().returns(challengeMessageId)
-
           let challengeResponse = { jsonrpc: '2.0', id: challengeMessageId, result: { status: 'nope' } }
 
           requestStartStub.onFirstCall().callsArgWith(0, registerMessageId)
@@ -370,10 +356,121 @@ Test('KmsConnection', kmsConnTest => {
     registerTest.end()
   })
 
+  kmsConnTest.test('respondToHealthCheck should', respondHcTest => {
+    respondHcTest.test('send healthcheck response from request', test => {
+      let id = 'request-id'
+      let request = { id }
+      let healthCheck = {}
+      let jsonRpcResponse = { jsonrpc: '2.0', id, result: healthCheck }
+
+      let ws = { send: sandbox.stub() }
+
+      let conn = KmsConnection.create()
+      conn._ws = ws
+
+      conn.respondToHealthCheck(request, healthCheck)
+      test.ok(ws.send.calledOnce)
+      test.deepEqual(JSON.parse(ws.send.firstCall.args), jsonRpcResponse)
+      test.end()
+    })
+
+    respondHcTest.end()
+  })
+
+  kmsConnTest.test('respondToInquiry should', respondInquiryTest => {
+    respondInquiryTest.test('send inquiry response to KMS for each found batch', test => {
+      let method = 'inquiry-response'
+      let inquiryId = 'inquiry-id'
+      let requestId = 'response-id'
+      let requestId2 = 'response-id2'
+
+      uuidStub.onFirstCall().returns(requestId)
+      uuidStub.onSecondCall().returns(requestId2)
+
+      let request = { inquiryId }
+      let results = [{ batchId: 'batch-id', data: 'this is data' }, { batchId: 'batch-id2', data: 'more data' }]
+
+      let jsonRpcRequest = { jsonrpc: '2.0', id: requestId, method, params: { inquiry: inquiryId, id: results[0].batchId, body: results[0].data, total: 2, item: 1 } }
+      let jsonRpcRequest2 = { jsonrpc: '2.0', id: requestId2, method, params: { inquiry: inquiryId, id: results[1].batchId, body: results[1].data, total: 2, item: 2 } }
+
+      let ws = { send: sandbox.stub() }
+
+      let conn = KmsConnection.create()
+      conn._ws = ws
+
+      conn.respondToInquiry(request, results)
+      test.ok(ws.send.calledTwice)
+      test.deepEqual(JSON.parse(ws.send.firstCall.args), jsonRpcRequest)
+      test.deepEqual(JSON.parse(ws.send.secondCall.args), jsonRpcRequest2)
+
+      test.end()
+    })
+
+    respondInquiryTest.test('send special inquiry response to KMS if no results found', test => {
+      let method = 'inquiry-response'
+      let inquiryId = 'inquiry-id'
+      let requestId = 'response-id'
+
+      uuidStub.onFirstCall().returns(requestId)
+
+      let request = { inquiryId }
+      let results = []
+
+      let jsonRpcRequest = { jsonrpc: '2.0', id: requestId, method, params: { inquiry: inquiryId, total: 0, item: 0 } }
+
+      let ws = { send: sandbox.stub() }
+
+      let conn = KmsConnection.create()
+      conn._ws = ws
+
+      conn.respondToInquiry(request, results)
+      test.ok(ws.send.calledOnce)
+      test.deepEqual(JSON.parse(ws.send.firstCall.args), jsonRpcRequest)
+
+      test.end()
+    })
+
+    respondInquiryTest.end()
+  })
+
+  kmsConnTest.test('sendBatch should', sendBatchTest => {
+    sendBatchTest.test('send batch and return pending promise', test => {
+      let requestId = 'request'
+
+      let method = 'batch'
+      let batch = { batchId: 'batch-id', signature: 'sig' }
+      let jsonRpcRequest = { jsonrpc: '2.0', id: requestId, method, params: { id: 'batch-id', signature: 'sig' } }
+
+      let ws = { send: sandbox.stub() }
+
+      let requestStartStub = sandbox.stub()
+      Requests.create.returns({ start: requestStartStub })
+
+      let conn = KmsConnection.create()
+      conn._ws = ws
+
+      let result = { test: 'test' }
+
+      requestStartStub.onFirstCall().callsArgWith(0, requestId)
+      requestStartStub.onFirstCall().returns(P.resolve({ result }))
+
+      let requestPromise = conn.sendBatch(batch)
+      requestPromise
+        .then(r => {
+          test.equal(r, result)
+          test.ok(ws.send.calledOnce)
+          test.deepEqual(JSON.parse(ws.send.firstCall.args), jsonRpcRequest)
+
+          test.end()
+        })
+    })
+
+    sendBatchTest.end()
+  })
+
   kmsConnTest.test('request should', requestTest => {
     requestTest.test('send JSONRPC request and return pending promise', test => {
       let requestId = 'request'
-      uuidStub.returns(requestId)
 
       let method = 'test'
       let params = { key: 'val' }
@@ -409,7 +506,6 @@ Test('KmsConnection', kmsConnTest => {
   kmsConnTest.test('respond should', sendResponseTest => {
     sendResponseTest.test('send JSONRPC response', test => {
       let id = 'id'
-      let request = { id }
       let result = { key: 'val' }
       let jsonRpcResponse = { jsonrpc: '2.0', id, result }
 
@@ -418,7 +514,7 @@ Test('KmsConnection', kmsConnTest => {
       let conn = KmsConnection.create()
       conn._ws = ws
 
-      conn.respond(request, result)
+      conn.respond(id, result)
       test.ok(ws.send.calledOnce)
       test.deepEqual(JSON.parse(ws.send.firstCall.args), jsonRpcResponse)
       test.end()
@@ -430,7 +526,6 @@ Test('KmsConnection', kmsConnTest => {
   kmsConnTest.test('respondError should', sendErrorResponseTest => {
     sendErrorResponseTest.test('send JSONRPC error response', test => {
       let id = 'id'
-      let request = { id }
       let error = { id: 101, message: 'error happened' }
       let jsonRpcErrorResponse = { jsonrpc: '2.0', id, error }
 
@@ -439,7 +534,7 @@ Test('KmsConnection', kmsConnTest => {
       let conn = KmsConnection.create()
       conn._ws = ws
 
-      conn.respondError(request, error)
+      conn.respondError(id, error)
       test.ok(ws.send.calledOnce)
       test.deepEqual(JSON.parse(ws.send.firstCall.args), jsonRpcErrorResponse)
       test.end()

@@ -59,7 +59,7 @@ Test('events model', modelTest => {
   })
 
   modelTest.test('getUnbatchedEvents should', getUnbatchedEventsTest => {
-    getUnbatchedEventsTest.test('get events with no batch id for list of event ids', test => {
+    getUnbatchedEventsTest.test('get events with no batch id for list of event ids ordered by sequence', test => {
       const created = Moment.utc()
 
       const sidecarId = Uuid()
@@ -68,8 +68,8 @@ Test('events model', modelTest => {
       const sidecarId2 = Uuid()
       const sidecar2 = { sidecarId: sidecarId2, serviceName: 'test service', version: '0.0.1', created }
 
-      const event = { eventId: Uuid(), sidecarId, sequence: 1, message: 'test message', signature: 'test-signature', created }
-      const event2 = { eventId: Uuid(), sidecarId, sequence: 2, message: 'test message', signature: 'test-signature', created }
+      const event = { eventId: Uuid(), sidecarId, sequence: 2, message: 'test message', signature: 'test-signature', created }
+      const event2 = { eventId: Uuid(), sidecarId, sequence: 1, message: 'test message', signature: 'test-signature', created }
       const event3 = { eventId: Uuid(), sidecarId: sidecarId2, sequence: 1, message: 'another message', signature: 'diff-signature', created }
       const event4 = { eventId: Uuid(), sidecarId: sidecarId2, sequence: 2, message: 'another message', signature: 'diff-signature', created }
 
@@ -83,10 +83,10 @@ Test('events model', modelTest => {
               Model.getUnbatchedEvents(createdEvents.map(x => x.eventId))
                 .then(found => {
                   test.equal(found.length, 2)
-                  test.ok(found.find(f => f.eventId === event.eventId))
-                  test.ok(found.find(f => f.eventId === event2.eventId))
-                  test.notOk(found.find(f => f.eventId === event.eventId).batchId)
-                  test.notOk(found.find(f => f.eventId === event2.eventId).batchId)
+                  test.equal(found[0].eventId, event2.eventId)
+                  test.equal(found[1].eventId, event.eventId)
+                  test.notOk(found[0].batchId)
+                  test.notOk(found[1].batchId)
                   test.end()
                 })
             })

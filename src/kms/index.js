@@ -2,6 +2,7 @@
 
 const P = require('bluebird')
 const WS = require('ws')
+const Uuid = require('uuid4')
 const Moment = require('moment')
 const EventEmitter = require('events')
 const Logger = require('@leveloneproject/central-services-shared').Logger
@@ -92,9 +93,33 @@ class KmsConnection extends EventEmitter {
     })
   }
 
+  respondToHealthCheck (request, hcResult) {
+    this.respond(request.id, hcResult)
+  }
+
+  respondToInquiry (request, inquiryResults) {
+    const method = 'inquiry-response'
+    const total = inquiryResults.length
+
+    if (total > 0) {
+      let item = 0
+
+      inquiryResults.forEach(b => {
+        item += 1
+        this._send({ method, params: { inquiry: request.inquiryId, id: b.batchId, body: b.data, total, item } })
+      })
+    } else {
+      this._send({ method, params: { inquiry: request.inquiryId, total: 0, item: 0 } })
+    }
+  }
+
+  sendBatch (batch) {
+    return this.request('batch', { 'id': batch.batchId, 'signature': batch.signature })
+  }
+
   request (method, params) {
     return this._pendingRequests.start(id => {
-      this._ws.send(this._buildJsonRpcMessage(id, { method, params }))
+      this._send({ id, method, params })
     })
     .then(response => {
       if (response.error) {
@@ -104,12 +129,19 @@ class KmsConnection extends EventEmitter {
     })
   }
 
-  respond (request, result) {
-    this._ws.send(this._buildJsonRpcMessage(request.id, { result }))
+  respond (requestId, result) {
+    this._ws.send(this._buildJsonRpcMessage(requestId, { result }))
   }
 
-  respondError (request, error) {
-    this._ws.send(this._buildJsonRpcMessage(request.id, { error }))
+  respondError (requestId, error) {
+    this._ws.send(this._buildJsonRpcMessage(requestId, { error }))
+  }
+
+  _send ({ id, method, params }) {
+    if (!id) {
+      id = Uuid()
+    }
+    this._ws.send(this._buildJsonRpcMessage(id, { method, params }))
   }
 
   _cleanup () {
