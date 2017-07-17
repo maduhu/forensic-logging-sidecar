@@ -16,7 +16,7 @@ Test('Batches model', modelTest => {
 
     Db.batches = {
       insert: sandbox.stub(),
-      find: sandbox.stub()
+      query: sandbox.stub()
     }
 
     t.end()
@@ -45,26 +45,55 @@ Test('Batches model', modelTest => {
     createTest.end()
   })
 
-  modelTest.test('findForTimespan should', findForTimespanTest => {
-    findForTimespanTest.test('find sidecar batches for a timespan', test => {
+  modelTest.test('findForService should', findForServiceTest => {
+    findForServiceTest.test('find sidecar batches for a service and timespan', test => {
       let now = Moment.utc()
       let start = Moment.utc(now).subtract(5, 'minutes')
 
+      let service = 'test-service'
       let startTime = start.toISOString()
       let endTime = start.toISOString()
 
-      let batches = [{ batchExternalId: '1' }, { batchExternalId: '2' }]
-      Db.batches.find.returns(P.resolve(batches))
+      let batches = [{ batchId: '1' }, { batchId: '2' }]
 
-      Model.findForTimespan(startTime, endTime)
+      let builderStub = sandbox.stub()
+      let whereStub = sandbox.stub()
+      let andWhere1Stub = sandbox.stub()
+      let andWhere2Stub = sandbox.stub()
+      let selectStub = sandbox.stub()
+      let orderByStub = sandbox.stub()
+
+      builderStub.join = sandbox.stub()
+
+      Db.batches.query.callsArgWith(0, builderStub)
+      Db.batches.query.returns(P.resolve(batches))
+
+      builderStub.join.returns({
+        where: whereStub.returns({
+          andWhere: andWhere1Stub.returns({
+            andWhere: andWhere2Stub.returns({
+              select: selectStub.returns({
+                orderBy: orderByStub
+              })
+            })
+          })
+        })
+      })
+
+      Model.findForService(service, startTime, endTime)
         .then(found => {
           test.equal(found, batches)
-          test.ok(Db.batches.find.calledWith(sandbox.match({ 'created >=': startTime, 'created <=': endTime }), { order: 'created asc' }))
+          test.ok(builderStub.join.calledWith('sidecars', 'sidecars.sidecarId', '=', 'batches.sidecarId'))
+          test.ok(whereStub.calledWith('sidecars.serviceName', service))
+          test.ok(andWhere1Stub.calledWith('batches.created', '>=', startTime))
+          test.ok(andWhere2Stub.calledWith('batches.created', '<=', endTime))
+          test.ok(selectStub.calledWith('batches.*'))
+          test.ok(orderByStub.calledWith('batches.created', 'asc'))
           test.end()
         })
     })
 
-    findForTimespanTest.end()
+    findForServiceTest.end()
   })
 
   modelTest.end()

@@ -1,5 +1,6 @@
 'use strict'
 
+const Uuid = require('uuid4')
 const Moment = require('moment')
 const Model = require('./model')
 const Util = require('../../lib/util')
@@ -7,8 +8,9 @@ const SymmetricCrypto = require('../../crypto/symmetric')
 
 exports.create = (sidecarId, sequence, message, signingKey) => {
   const created = Moment.utc()
+  const eventId = Uuid()
 
-  let event = { sidecarId, sequence, message, created }
+  let event = { eventId, sidecarId, sequence, message, created }
   event.signature = createEventSignature(event, signingKey)
 
   return Model.create(event)

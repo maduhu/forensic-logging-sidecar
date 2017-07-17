@@ -6,16 +6,22 @@ const Uuid = require('uuid4')
 const Moment = require('moment')
 const Model = require('../../../../src/domain/event/model')
 const BatchModel = require('../../../../src/domain/batch/model')
+const SidecarModel = require('../../../../src/domain/sidecar/model')
 
 Test('events model', modelTest => {
   modelTest.test('create should', createTest => {
     createTest.test('create a new event', test => {
       const created = Moment.utc()
-      const event = { sidecarId: Uuid(), sequence: 1, message: 'test message', signature: 'test-signature', created }
 
-      Model.create(event)
+      const sidecarId = Uuid()
+      const sidecar = { sidecarId, serviceName: `service-${Uuid()}`, version: '0.0.1', created }
+
+      const event = { eventId: Uuid(), sidecarId, sequence: 1, message: 'test message', signature: 'test-signature', created }
+
+      SidecarModel.create(sidecar)
+        .then(() => Model.create(event))
         .then(saved => {
-          test.ok(saved.eventId)
+          test.equal(saved.eventId, event.eventId)
           test.equal(saved.sidecarId, event.sidecarId)
           test.equal(saved.sequence, event.sequence)
           test.equal(saved.message, event.message)
@@ -28,10 +34,14 @@ Test('events model', modelTest => {
     createTest.test('not allow duplicate sequence for a given sidecar', test => {
       const created = Moment.utc()
 
-      const event = { sidecarId: Uuid(), sequence: 2, message: 'test message', signature: 'test-signature', created }
-      const event2 = { sidecarId: event.sidecarId, sequence: 2, message: 'another message', signature: 'diff-signature', created }
+      const sidecarId = Uuid()
+      const sidecar = { sidecarId, serviceName: `service-${Uuid()}`, version: '0.0.1', created }
 
-      Model.create(event)
+      const event = { sidecarId, sequence: 2, message: 'test message', signature: 'test-signature', created }
+      const event2 = { sidecarId, sequence: 2, message: 'another message', signature: 'diff-signature', created }
+
+      SidecarModel.create(sidecar)
+        .then(() => Model.create(event))
         .then((saved) => {
           test.ok(saved)
           return Model.create(event2)
@@ -49,34 +59,34 @@ Test('events model', modelTest => {
   })
 
   modelTest.test('getUnbatchedEvents should', getUnbatchedEventsTest => {
-    getUnbatchedEventsTest.test('get events with no batch id for list of event ids and order by eventId', test => {
+    getUnbatchedEventsTest.test('get events with no batch id for list of event ids', test => {
       const created = Moment.utc()
 
       const sidecarId = Uuid()
+      const sidecar = { sidecarId, serviceName: `service-${Uuid()}`, version: '0.0.1', created }
+
       const sidecarId2 = Uuid()
+      const sidecar2 = { sidecarId: sidecarId2, serviceName: 'test service', version: '0.0.1', created }
 
-      const event = { sidecarId, sequence: 1, message: 'test message', signature: 'test-signature', created }
-      const event2 = { sidecarId, sequence: 2, message: 'test message', signature: 'test-signature', created }
-      const event3 = { sidecarId: sidecarId2, sequence: 1, message: 'another message', signature: 'diff-signature', created }
-      const event4 = { sidecarId: sidecarId2, sequence: 2, message: 'another message', signature: 'diff-signature', created }
+      const event = { eventId: Uuid(), sidecarId, sequence: 1, message: 'test message', signature: 'test-signature', created }
+      const event2 = { eventId: Uuid(), sidecarId, sequence: 2, message: 'test message', signature: 'test-signature', created }
+      const event3 = { eventId: Uuid(), sidecarId: sidecarId2, sequence: 1, message: 'another message', signature: 'diff-signature', created }
+      const event4 = { eventId: Uuid(), sidecarId: sidecarId2, sequence: 2, message: 'another message', signature: 'diff-signature', created }
 
-      P.all([Model.create(event), Model.create(event2), Model.create(event3), Model.create(event4)])
+      P.all([SidecarModel.create(sidecar), SidecarModel.create(sidecar2)])
+        .then(() => P.all([Model.create(event), Model.create(event2), Model.create(event3), Model.create(event4)]))
         .then(createdEvents => {
-          let sortedEvents = createdEvents.sort((a, b) => {
-            return a.eventId - b.eventId
-          })
-
-          let batch = { sidecarId, batchExternalId: Uuid(), data: '', signature: '', created }
+          let batch = { sidecarId, batchId: Uuid(), data: '', signature: '', created }
           BatchModel.create(batch)
-            .then(createdBatch => Model.updateEvents([sortedEvents[2].eventId, sortedEvents[3].eventId], { batchId: createdBatch.batchId }))
+            .then(createdBatch => Model.updateEvents([event3.eventId, event4.eventId], { batchId: createdBatch.batchId }))
             .then(() => {
               Model.getUnbatchedEvents(createdEvents.map(x => x.eventId))
                 .then(found => {
                   test.equal(found.length, 2)
-                  test.equal(found[0].eventId, sortedEvents[0].eventId)
-                  test.equal(found[1].eventId, sortedEvents[1].eventId)
-                  test.notOk(found[0].batchId)
-                  test.notOk(found[1].batchId)
+                  test.ok(found.find(f => f.eventId === event.eventId))
+                  test.ok(found.find(f => f.eventId === event2.eventId))
+                  test.notOk(found.find(f => f.eventId === event.eventId).batchId)
+                  test.notOk(found.find(f => f.eventId === event2.eventId).batchId)
                   test.end()
                 })
             })
@@ -90,11 +100,15 @@ Test('events model', modelTest => {
     getEventCountTest.test('get events for sidecar', test => {
       const now = Moment.utc()
 
-      const event = { sidecarId: Uuid(), sequence: 1, message: 'test message', signature: 'test-signature', created: Moment.utc(now).subtract(5, 'minutes') }
-      const event2 = { sidecarId: event.sidecarId, sequence: 2, message: 'another message', signature: 'diff-signature', created: Moment.utc(now).subtract(45, 'minutes') }
-      const event3 = { sidecarId: event.sidecarId, sequence: 3, message: 'another message', signature: 'diff-signature', created: Moment.utc(now).subtract(2, 'hours') }
+      const sidecarId = Uuid()
+      const sidecar = { sidecarId, serviceName: `service-${Uuid()}`, version: '0.0.1', created: now }
 
-      Model.create(event)
+      const event = { eventId: Uuid(), sidecarId, sequence: 1, message: 'test message', signature: 'test-signature', created: Moment.utc(now).subtract(5, 'minutes') }
+      const event2 = { eventId: Uuid(), sidecarId, sequence: 2, message: 'another message', signature: 'diff-signature', created: Moment.utc(now).subtract(45, 'minutes') }
+      const event3 = { eventId: Uuid(), sidecarId, sequence: 3, message: 'another message', signature: 'diff-signature', created: Moment.utc(now).subtract(2, 'hours') }
+
+      SidecarModel.create(sidecar)
+        .then(() => Model.create(event))
         .then(() => Model.create(event2))
         .then(() => Model.create(event3))
         .then(() => Model.getEventCount(event.sidecarId))
@@ -108,11 +122,15 @@ Test('events model', modelTest => {
       const now = Moment.utc()
       const lastHour = Moment.utc(now).subtract(1, 'hour')
 
-      const event = { sidecarId: Uuid(), sequence: 1, message: 'test message', signature: 'test-signature', created: Moment.utc(now).subtract(5, 'minutes') }
-      const event2 = { sidecarId: event.sidecarId, sequence: 2, message: 'another message', signature: 'diff-signature', created: Moment.utc(now).subtract(45, 'minutes') }
-      const event3 = { sidecarId: event.sidecarId, sequence: 3, message: 'another message', signature: 'diff-signature', created: Moment.utc(now).subtract(2, 'hours') }
+      const sidecarId = Uuid()
+      const sidecar = { sidecarId, serviceName: `service-${Uuid()}`, version: '0.0.1', created: now }
 
-      Model.create(event)
+      const event = { eventId: Uuid(), sidecarId, sequence: 1, message: 'test message', signature: 'test-signature', created: Moment.utc(now).subtract(5, 'minutes') }
+      const event2 = { eventId: Uuid(), sidecarId, sequence: 2, message: 'another message', signature: 'diff-signature', created: Moment.utc(now).subtract(45, 'minutes') }
+      const event3 = { eventId: Uuid(), sidecarId, sequence: 3, message: 'another message', signature: 'diff-signature', created: Moment.utc(now).subtract(2, 'hours') }
+
+      SidecarModel.create(sidecar)
+        .then(() => Model.create(event))
         .then(() => Model.create(event2))
         .then(() => Model.create(event3))
         .then(() => Model.getEventCount(event.sidecarId, { startTime: lastHour.toISOString(), endTime: now.toISOString() }))
@@ -130,14 +148,16 @@ Test('events model', modelTest => {
       const created = Moment.utc()
 
       const sidecarId = Uuid()
+      const sidecar = { sidecarId, serviceName: `service-${Uuid()}`, version: '0.0.1', created }
 
-      const event = { sidecarId, sequence: 1, message: 'test message', signature: 'test-signature', created }
-      const event2 = { sidecarId, sequence: 2, message: 'test message', signature: 'test-signature', created }
-      const event3 = { sidecarId, sequence: 3, message: 'another message', signature: 'diff-signature', created }
+      const event = { eventId: Uuid(), sidecarId, sequence: 1, message: 'test message', signature: 'test-signature', created }
+      const event2 = { eventId: Uuid(), sidecarId, sequence: 2, message: 'test message', signature: 'test-signature', created }
+      const event3 = { eventId: Uuid(), sidecarId, sequence: 3, message: 'another message', signature: 'diff-signature', created }
 
-      P.all([Model.create(event), Model.create(event2), Model.create(event3)])
+      SidecarModel.create(sidecar)
+        .then(() => P.all([Model.create(event), Model.create(event2), Model.create(event3)]))
         .then(createdEvents => {
-          let batch = { sidecarId, batchExternalId: Uuid(), data: '', signature: '', created }
+          let batch = { sidecarId, batchId: Uuid(), data: '', signature: '', created }
           BatchModel.create(batch)
             .then(createdBatch => {
               Model.updateEvents(createdEvents.map(x => x.eventId), { batchId: createdBatch.batchId })

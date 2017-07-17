@@ -57,7 +57,7 @@ Test('Events model', modelTest => {
       Model.getUnbatchedEvents(eventIds)
         .then(found => {
           test.equal(found, events)
-          test.ok(Db.events.find.calledWith({ eventId: eventIds, batchId: null }, { order: 'eventId asc' }))
+          test.ok(Db.events.find.calledWith({ eventId: eventIds, batchId: null }))
           test.end()
         })
     })

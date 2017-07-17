@@ -10,25 +10,25 @@ const AsymmetricCrypto = require('../../crypto/asymmetric')
 exports.create = (sidecarId, eventIds, signingKey) => {
   return EventService.getUnbatchedEventsByIds(eventIds)
     .then(unbatchedEvents => {
-      const batchExternalId = Uuid()
+      const batchId = Uuid()
       const created = Moment.utc()
 
       const batchData = buildBatchData(unbatchedEvents)
       const signature = AsymmetricCrypto.sign(batchData, signingKey)
 
-      return Model.create({ batchExternalId, sidecarId, data: batchData, signature, created })
+      return Model.create({ batchId, sidecarId, data: batchData, signature, created })
         .then(batch => EventService.assignEventsToBatch(unbatchedEvents, batch).return(batch))
     })
 }
 
-exports.findForTimespan = (startTime, endTime) => {
+exports.findForService = (serviceName, startTime, endTime) => {
   if (!Util.isString(startTime)) {
     startTime = startTime.toISOString()
   }
   if (!Util.isString(endTime)) {
     endTime = endTime.toISOString()
   }
-  return Model.findForTimespan(startTime, endTime)
+  return Model.findForService(serviceName, startTime, endTime)
 }
 
 const buildBatchData = (events) => {

@@ -9,6 +9,7 @@ const HealthCheck = require('./health-check')
 const EventService = require('./domain/event')
 const BatchService = require('./domain/batch')
 const BatchTracker = require('./domain/batch/tracker')
+const SidecarService = require('./domain/sidecar')
 
 class Sidecar {
   constructor (settings) {
@@ -33,18 +34,21 @@ class Sidecar {
   }
 
   start () {
-    return this._kmsConnection.connect()
-      .then(() => this._kmsConnection.register(this.id, this.service))
-      .then(keys => {
-        this._batchKey = keys.batchKey
-        this._rowKey = keys.rowKey
+    return SidecarService.create(this.id, this.service, this.version, this.startTime)
+      .then(() => {
+        return this._kmsConnection.connect()
+          .then(() => this._kmsConnection.register(this.id, this.service))
+          .then(keys => {
+            this._batchKey = keys.batchKey
+            this._rowKey = keys.rowKey
+          })
+          .then(() => this._socketListener.listen(this.port))
       })
-      .then(() => this._socketListener.listen(this.port))
   }
 
   _onInquiryRequest (request) {
     Logger.info(`Received inquiry ${request.inquiryId} from KMS`)
-    BatchService.findForTimespan(request.startTime, request.endTime)
+    BatchService.findForService(this.service, request.startTime, request.endTime)
       .then(found => Logger.info(`Found ${found.length} batches for inquiry ${request.inquiryId}`))
   }
 
@@ -71,8 +75,8 @@ class Sidecar {
   _onBatchReady (eventIds) {
     BatchService.create(this.id, eventIds, this._batchKey)
       .then(batch => {
-        Logger.info(`Created batch ${batch.batchExternalId} of ${eventIds.length} events`)
-        return this._kmsConnection.request('batch', { 'id': batch.batchExternalId, 'signature': batch.signature })
+        Logger.info(`Created batch ${batch.batchId} of ${eventIds.length} events`)
+        return this._kmsConnection.request('batch', { 'id': batch.batchId, 'signature': batch.signature })
       })
       .then(response => Logger.info(`Sent batch ${response.id} successfully to KMS`))
       .catch(e => Logger.error('Error received while creating batch and sending to KMS', e))

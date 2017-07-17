@@ -18,7 +18,7 @@ Test('Batch service', serviceTest => {
 
   serviceTest.beforeEach((t) => {
     sandbox = Sinon.sandbox.create()
-    sandbox.stub(Model, 'findForTimespan')
+    sandbox.stub(Model, 'findForService')
     sandbox.stub(Model, 'create')
     sandbox.stub(EventService, 'getUnbatchedEventsByIds')
     sandbox.stub(EventService, 'assignEventsToBatch')
@@ -41,12 +41,12 @@ Test('Batch service', serviceTest => {
   serviceTest.test('create should', createTest => {
     createTest.test('create batch and update events', test => {
       let sidecarId = Uuid()
-      let batchExternalId = Uuid()
+      let batchId = Uuid()
       let eventIds = [1, 2]
       let signingKey = 'DFDE22A3276FC520A24FBE5534EDADFE080D78375C4530E038EFCF6CA699228A'
       let now = Moment()
 
-      uuidStub.returns(batchExternalId)
+      uuidStub.returns(batchId)
 
       let savedBatch = {}
       Model.create.returns(P.resolve(savedBatch))
@@ -79,7 +79,7 @@ Test('Batch service', serviceTest => {
           test.ok(EventService.assignEventsToBatch.calledWith(unbatchedEvents, savedBatch))
           test.ok(AsymmetricCrypto.sign.calledWith(batchData, signingKey))
           test.ok(Model.create.calledWith(sandbox.match({
-            batchExternalId,
+            batchId,
             sidecarId,
             data: batchData,
             signature,
@@ -93,44 +93,46 @@ Test('Batch service', serviceTest => {
     createTest.end()
   })
 
-  serviceTest.test('findForTimespan should', findForTimespanTest => {
-    findForTimespanTest.test('find batches for timespan', test => {
+  serviceTest.test('findForService should', findForServiceTest => {
+    findForServiceTest.test('find batches for timespan', test => {
       let now = Moment()
       let start = Moment(now).subtract(5, 'minutes')
 
-      let batches = [{ batchExternalId: '1' }, { batchExternalId: '2' }]
-      Model.findForTimespan.returns(P.resolve(batches))
+      let batches = [{ batchId: '1' }, { batchId: '2' }]
+      Model.findForService.returns(P.resolve(batches))
 
+      const service = 'test-service'
       const startTime = start.toISOString()
       const endTime = now.toISOString()
 
-      Service.findForTimespan(startTime, endTime)
+      Service.findForService(service, startTime, endTime)
         .then(found => {
           test.equal(found, batches)
-          test.ok(Model.findForTimespan.calledWith(sandbox.match(startTime, endTime)))
+          test.ok(Model.findForService.calledWith(service, startTime, endTime))
           test.end()
         })
     })
 
-    findForTimespanTest.test('convert dates to strings before calling model', test => {
+    findForServiceTest.test('convert dates to strings before calling model', test => {
       let now = Moment()
       let start = Moment(now).subtract(5, 'minutes')
 
-      let batches = [{ batchExternalId: '1' }, { batchExternalId: '2' }]
-      Model.findForTimespan.returns(P.resolve(batches))
+      let batches = [{ batchId: '1' }, { batchId: '2' }]
+      Model.findForService.returns(P.resolve(batches))
 
+      const service = 'test-service'
       const startTime = start.toISOString()
       const endTime = now.toISOString()
 
-      Service.findForTimespan(start, now)
+      Service.findForService(service, start, now)
         .then(found => {
           test.equal(found, batches)
-          test.ok(Model.findForTimespan.calledWith(sandbox.match(startTime, endTime)))
+          test.ok(Model.findForService.calledWith(service, startTime, endTime))
           test.end()
         })
     })
 
-    findForTimespanTest.end()
+    findForServiceTest.end()
   })
 
   serviceTest.end()

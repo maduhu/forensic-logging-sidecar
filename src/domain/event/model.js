@@ -7,7 +7,7 @@ exports.create = (event) => {
 }
 
 exports.getUnbatchedEvents = (eventIds) => {
-  return Db.events.find({ 'eventId': eventIds, 'batchId': null }, { order: 'eventId asc' })
+  return Db.events.find({ 'eventId': eventIds, 'batchId': null })
 }
 
 exports.getEventCount = (sidecarId, { startTime = null, endTime = null } = {}) => {
