@@ -16,6 +16,7 @@ const Proxyquire = require('proxyquire')
 
 Test('KmsConnection', kmsConnTest => {
   let sandbox
+  let clock
   let wsStub
   let uuidStub
   let keepAliveStub
@@ -37,22 +38,27 @@ Test('KmsConnection', kmsConnTest => {
     uuidStub = sandbox.stub()
     KmsConnection = Proxyquire(`${src}/kms`, { 'ws': wsStub, 'uuid4': uuidStub })
 
+    clock = sandbox.useFakeTimers()
+
     t.end()
   })
 
   kmsConnTest.afterEach(t => {
     sandbox.restore()
+    clock.restore()
     t.end()
   })
 
   kmsConnTest.test('create should', createTest => {
     createTest.test('create new connection and set properties', test => {
-      let settings = { url: 'ws://test.com', pingInterval: 5000, requestTimeout: 15000 }
+      let settings = { url: 'ws://test.com', pingInterval: 5000, requestTimeout: 15000, connectTimeout: 9000, reconnectInterval: 2000 }
       let conn = KmsConnection.create(settings)
 
       test.equal(conn._url, settings.url)
       test.equal(conn._pingInterval, settings.pingInterval)
       test.equal(conn._timeout, settings.requestTimeout)
+      test.equal(conn._connectTimeout, settings.connectTimeout)
+      test.equal(conn._reconnectInterval, settings.reconnectInterval)
       test.ok(Requests.create.calledWith(sandbox.match({
         timeout: settings.requestTimeout
       })))
@@ -65,6 +71,8 @@ Test('KmsConnection', kmsConnTest => {
       test.equal(conn._url, 'ws://localhost:8080/sidecar')
       test.equal(conn._pingInterval, 30000)
       test.equal(conn._timeout, 5000)
+      test.equal(conn._connectTimeout, 30000)
+      test.equal(conn._reconnectInterval, 5000)
       test.end()
     })
 
@@ -103,8 +111,99 @@ Test('KmsConnection', kmsConnTest => {
           test.notEqual(wsEmitter.listeners('error')[0].name.indexOf('_wsOnError'), -1)
           test.equal(wsEmitter.listenerCount('ping'), 1)
           test.equal(wsEmitter.listenerCount('pong'), 1)
+          test.notOk(kmsConnection._connectTimer)
+          test.notOk(kmsConnection._reconnectTimer)
+          test.notOk(kmsConnection._connectPromise)
           test.ok(KeepAlive.create.calledWith(wsEmitter, settings.pingInterval))
           test.ok(keepAliveStub.start.calledOnce)
+          test.end()
+        })
+    })
+
+    connectTest.test('reject if connect timeout reached', test => {
+      let settings = { url: 'ws://test.com', connectTimeout: 5000 }
+      let kmsConnection = KmsConnection.create(settings)
+
+      let wsEmitter = new EventEmitter()
+      wsStub.returns(wsEmitter)
+
+      wsEmitter.emit('open')
+
+      let connectPromise = kmsConnection.connect()
+      test.ok(wsStub.calledWithNew())
+      test.ok(wsStub.calledWith(settings.url, sandbox.match({
+        perMessageDeflate: false
+      })))
+      test.notOk(kmsConnection._connected)
+      test.ok(wsEmitter.listenerCount('open'), 1)
+      test.ok(wsEmitter.listenerCount('error'), 1)
+      test.equal(wsEmitter.listeners('error')[0].name.indexOf('_onError'), -1)
+
+      clock.tick(settings.connectTimeout + 1)
+
+      connectPromise
+        .then(() => {
+          test.fail('Should have thrown error')
+          test.end()
+        })
+        .catch(err => {
+          test.notOk(kmsConnection._connected)
+          test.equal(wsEmitter.listenerCount('open'), 0)
+          test.equal(wsEmitter.listenerCount('close'), 0)
+          test.equal(wsEmitter.listenerCount('error'), 0)
+          test.equal(wsEmitter.listenerCount('message'), 0)
+          test.notOk(kmsConnection._connectTimer)
+          test.notOk(kmsConnection._reconnectTimer)
+          test.notOk(kmsConnection._connectPromise)
+          test.notOk(KeepAlive.create.calledOnce)
+          test.equal(err.message, `Unable to connect to KMS within ${settings.connectTimeout}ms`)
+          test.end()
+        })
+    })
+
+    connectTest.test('reconnect if ECONNREFUSED error', test => {
+      let settings = { url: 'ws://test.com', connectTimeout: 5000, reconnectInterval: 1000, pingInterval: 5000 }
+      let kmsConnection = KmsConnection.create(settings)
+
+      let wsEmitter = new EventEmitter()
+      wsStub.returns(wsEmitter)
+
+      wsEmitter.emit('open')
+
+      let connectPromise = kmsConnection.connect()
+      test.ok(wsStub.calledWithNew())
+      test.ok(wsStub.calledWith(settings.url, sandbox.match({
+        perMessageDeflate: false
+      })))
+      test.notOk(kmsConnection._connected)
+      test.ok(wsEmitter.listenerCount('open'), 1)
+      test.ok(wsEmitter.listenerCount('error'), 1)
+      test.equal(wsEmitter.listeners('error')[0].name.indexOf('_onError'), -1)
+
+      let error = new Error('Error connecting to websocket')
+      error.code = 'ECONNREFUSED'
+      wsEmitter.emit('error', error)
+
+      clock.tick(settings.reconnectInterval + 1)
+
+      wsEmitter.emit('open')
+
+      connectPromise
+        .then(() => {
+          test.ok(kmsConnection._connected)
+          test.equal(wsEmitter.listenerCount('open'), 0)
+          test.equal(wsEmitter.listenerCount('close'), 1)
+          test.equal(wsEmitter.listenerCount('error'), 1)
+          test.equal(wsEmitter.listenerCount('message'), 1)
+          test.notEqual(wsEmitter.listeners('error')[0].name.indexOf('_wsOnError'), -1)
+          test.equal(wsEmitter.listenerCount('ping'), 1)
+          test.equal(wsEmitter.listenerCount('pong'), 1)
+          test.notOk(kmsConnection._connectTimer)
+          test.notOk(kmsConnection._reconnectTimer)
+          test.notOk(kmsConnection._connectPromise)
+          test.ok(KeepAlive.create.calledWith(wsEmitter, settings.pingInterval))
+          test.ok(keepAliveStub.start.calledOnce)
+          test.ok(Logger.info.calledWith(`Error connecting to KMS, attempting to connect after sleeping ${settings.reconnectInterval}ms`))
           test.end()
         })
     })
@@ -142,6 +241,10 @@ Test('KmsConnection', kmsConnTest => {
           test.equal(wsEmitter.listenerCount('close'), 0)
           test.equal(wsEmitter.listenerCount('error'), 0)
           test.equal(wsEmitter.listenerCount('message'), 0)
+          test.notOk(kmsConnection._connectTimer)
+          test.notOk(kmsConnection._reconnectTimer)
+          test.notOk(kmsConnection._connectPromise)
+          test.notOk(KeepAlive.create.calledOnce)
           test.notOk(KeepAlive.create.calledOnce)
           test.equal(err, error)
           test.end()

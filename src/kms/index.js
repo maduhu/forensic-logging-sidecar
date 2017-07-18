@@ -19,9 +19,15 @@ class KmsConnection extends EventEmitter {
     this._url = settings.url || 'ws://localhost:8080/sidecar'
     this._pingInterval = settings.pingInterval || 30000
     this._timeout = settings.requestTimeout || 5000
+    this._connectTimeout = settings.connectTimeout || 30000
+    this._reconnectInterval = settings.reconnectInterval || 5000
 
     this._pendingRequests = Requests.create({ timeout: this._timeout })
+
     this._connected = false
+    this._connectPromise = null
+    this._connectTimer = null
+    this._reconnectTimer = null
   }
 
   connect () {
@@ -30,38 +36,11 @@ class KmsConnection extends EventEmitter {
         return resolve(this)
       }
 
-      const connectErrorListener = (err) => {
-        this._ws.removeAllListeners()
-        reject(err)
-      }
+      this._connectPromise = { resolve, reject }
 
-      // Create the websocket, and wait for either an open or error event to complete Promise.
-      this._ws = new WS(this._url, {
-        perMessageDeflate: false
-      })
+      this._connectTimer = setTimeout(this._connectTimedOut.bind(this), this._connectTimeout)
 
-      this._ws.once('open', () => {
-        this._connected = true
-
-        // Remove listener only used for connect problems.
-        this._ws.removeListener('error', connectErrorListener)
-
-        // Attach the regular event listeners.
-        this._ws.on('close', this._wsOnClose.bind(this))
-        this._ws.on('error', this._wsOnError.bind(this))
-        this._ws.on('message', this._wsOnMessage.bind(this))
-
-        // Setup ping/pong.
-        this._ws.on('ping', this._wsOnPing.bind(this))
-        this._ws.on('pong', this._wsOnPong.bind(this))
-
-        this._keepAlive = KeepAlive.create(this._ws, this._pingInterval)
-        this._keepAlive.start()
-
-        resolve(this)
-      })
-
-      this._ws.once('error', connectErrorListener)
+      this._connect()
     })
   }
 
@@ -135,6 +114,80 @@ class KmsConnection extends EventEmitter {
 
   respondError (requestId, error) {
     this._ws.send(this._buildJsonRpcMessage(requestId, { error }))
+  }
+
+  _connect () {
+    const connectErrorListener = (err) => {
+      this._ws.removeAllListeners()
+
+      switch (err.code) {
+        case 'ECONNREFUSED':
+          Logger.info(`Error connecting to KMS, attempting to connect after sleeping ${this._reconnectInterval}ms`)
+
+          let self = this
+          this._reconnectTimer = setTimeout(() => {
+            self._connect()
+          }, this._reconnectInterval)
+          break
+        default:
+          this._clearConnectionTimers()
+          this._connectError(err)
+      }
+    }
+
+    // Create the websocket, and wait for either an open or error event to complete Promise.
+    this._ws = new WS(this._url, {
+      perMessageDeflate: false
+    })
+
+    this._ws.once('open', () => {
+      this._connected = true
+
+      this._clearConnectionTimers()
+
+      // Remove listener only used for connect problems.
+      this._ws.removeListener('error', connectErrorListener)
+
+      // Attach the regular event listeners.
+      this._ws.on('close', this._wsOnClose.bind(this))
+      this._ws.on('error', this._wsOnError.bind(this))
+      this._ws.on('message', this._wsOnMessage.bind(this))
+
+      // Setup ping/pong.
+      this._ws.on('ping', this._wsOnPing.bind(this))
+      this._ws.on('pong', this._wsOnPong.bind(this))
+
+      this._keepAlive = KeepAlive.create(this._ws, this._pingInterval)
+      this._keepAlive.start()
+
+      this._connectSuccessful(this)
+    })
+
+    this._ws.once('error', connectErrorListener)
+  }
+
+  _connectTimedOut () {
+    this._ws.removeAllListeners()
+    this._clearConnectionTimers()
+    this._connectError(new Error(`Unable to connect to KMS within ${this._connectTimeout}ms`))
+  }
+
+  _connectError (err) {
+    this._connectPromise.reject(err)
+    this._connectPromise = null
+  }
+
+  _connectSuccessful (obj) {
+    this._connectPromise.resolve(obj)
+    this._connectPromise = null
+  }
+
+  _clearConnectionTimers () {
+    clearTimeout(this._connectTimer)
+    this._connectTimer = null
+
+    clearTimeout(this._reconnectTimer)
+    this._reconnectTimer = null
   }
 
   _send ({ id, method, params }) {

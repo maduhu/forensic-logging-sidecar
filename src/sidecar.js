@@ -22,7 +22,7 @@ class Sidecar {
 
     this._sequence = 0
 
-    this._kmsConnection = KmsConnection.create({ url: settings.kmsUrl, pingInterval: settings.kmsPingInterval, requestTimeout: settings.kmsRequestTimeout })
+    this._kmsConnection = KmsConnection.create(settings.kms)
     this._kmsConnection.on('inquiry', this._onInquiryRequest.bind(this))
     this._kmsConnection.on('healthCheck', this._onHealthCheckRequest.bind(this))
 

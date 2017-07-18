@@ -21,7 +21,7 @@ Test('Server', serverTest => {
   let port = 1234
   let batchSize = 5
   let service = 'MyService'
-  let kmsConfig = { 'URL': 'ws://test.com', 'PING_INTERVAL': 10000, 'REQUEST_TIMEOUT': 15000 }
+  let kmsConfig = { 'URL': 'ws://test.com', 'PING_INTERVAL': 10000, 'REQUEST_TIMEOUT': 15000, 'CONNECT_TIMEOUT': 8000, 'RECONNECT_INTERVAL': 2000 }
   let databaseUri = 'some-database-uri'
 
   serverTest.beforeEach(t => {
@@ -79,9 +79,13 @@ Test('Server', serverTest => {
         test.ok(Sidecar.create.calledWith(sandbox.match({
           port,
           serviceName: service,
-          kmsUrl: kmsConfig.URL,
-          kmsPingInterval: kmsConfig.PING_INTERVAL,
-          kmsRequestTimeout: kmsConfig.REQUEST_TIMEOUT,
+          kms: {
+            url: kmsConfig.URL,
+            pingInterval: kmsConfig.PING_INTERVAL,
+            requestTimeout: kmsConfig.REQUEST_TIMEOUT,
+            connectTimeout: kmsConfig.CONNECT_TIMEOUT,
+            reconnectInterval: kmsConfig.RECONNECT_INTERVAL
+          },
           version: Package.version,
           batchSize
         })))

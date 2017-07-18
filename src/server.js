@@ -27,9 +27,13 @@ const buildSidecarSettings = () => {
     serviceName: Config.SERVICE,
     batchSize: Config.BATCH_SIZE,
     version: Package.version,
-    kmsUrl: Config.KMS.URL,
-    kmsPingInterval: Config.KMS.PING_INTERVAL,
-    kmsRequestTimeout: Config.KMS.REQUEST_TIMEOUT
+    kms: {
+      url: Config.KMS.URL,
+      pingInterval: Config.KMS.PING_INTERVAL,
+      requestTimeout: Config.KMS.REQUEST_TIMEOUT,
+      connectTimeout: Config.KMS.CONNECT_TIMEOUT,
+      reconnectInterval: Config.KMS.RECONNECT_INTERVAL
+    }
   }
 }
 

@@ -8,6 +8,7 @@ const KeepAlive = require('../../../src/kms/keep-alive')
 Test('KeepAlive', keepAliveTest => {
   let sandbox
   let clock
+
   keepAliveTest.beforeEach(t => {
     sandbox = Sinon.sandbox.create()
     sandbox.stub(Moment, 'utc')

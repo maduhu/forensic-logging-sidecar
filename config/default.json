@@ -5,6 +5,8 @@
   "KMS": {
     "URL": "ws://localhost:8080/sidecar",
     "PING_INTERVAL": 30000,
-    "REQUEST_TIMEOUT": 60000
+    "REQUEST_TIMEOUT": 30000,
+    "CONNECT_TIMEOUT": 60000,
+    "RECONNECT_INTERVAL": 5000
   }
 }
