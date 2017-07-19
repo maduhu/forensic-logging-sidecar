@@ -87,8 +87,6 @@ Test('KmsConnection', kmsConnTest => {
       let wsEmitter = new EventEmitter()
       wsStub.returns(wsEmitter)
 
-      wsEmitter.emit('open')
-
       let connectPromise = kmsConnection.connect()
       test.ok(wsStub.calledWithNew())
       test.ok(wsStub.calledWith(settings.url, sandbox.match({
@@ -126,8 +124,6 @@ Test('KmsConnection', kmsConnTest => {
 
       let wsEmitter = new EventEmitter()
       wsStub.returns(wsEmitter)
-
-      wsEmitter.emit('open')
 
       let connectPromise = kmsConnection.connect()
       test.ok(wsStub.calledWithNew())
@@ -167,8 +163,6 @@ Test('KmsConnection', kmsConnTest => {
 
       let wsEmitter = new EventEmitter()
       wsStub.returns(wsEmitter)
-
-      wsEmitter.emit('open')
 
       let connectPromise = kmsConnection.connect()
       test.ok(wsStub.calledWithNew())
@@ -214,8 +208,6 @@ Test('KmsConnection', kmsConnTest => {
 
       let wsEmitter = new EventEmitter()
       wsStub.returns(wsEmitter)
-
-      wsEmitter.emit('open')
 
       let connectPromise = kmsConnection.connect()
       test.ok(wsStub.calledWithNew())
