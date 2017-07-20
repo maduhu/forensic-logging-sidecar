@@ -195,7 +195,9 @@ class KmsConnection extends EventEmitter {
     if (!id) {
       id = Uuid()
     }
-    this._ws.send(this._buildJsonRpcMessage(id, { method, params }))
+    let message = this._buildJsonRpcMessage(id, { method, params })
+    Logger.info(message)
+    this._ws.send(message)
   }
 
   _cleanup () {
