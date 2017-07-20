@@ -85,6 +85,7 @@ class KmsConnection extends EventEmitter {
 
       inquiryResults.forEach(b => {
         item += 1
+        Logger.info(`Sending batch ${b.batchId} for inquiry ${request.inquiryId}, item ${item} of total ${total}`)
         this._send({ method, params: { inquiry: request.inquiryId, id: b.batchId, body: b.data, total, item } })
       })
     } else {
