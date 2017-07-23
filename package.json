@@ -1,6 +1,6 @@
 {
   "name": "forensic-logging-sidecar",
-  "version": "0.9.4",
+  "version": "0.10.0",
   "description": "Sidecar service to save forensic logs",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
