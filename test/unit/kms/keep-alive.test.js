@@ -24,11 +24,9 @@ Test('KeepAlive', keepAliveTest => {
 
   keepAliveTest.test('create should', createTest => {
     createTest.test('create new pinger and set properties', test => {
-      let ws = {}
       let pingInterval = 1000
-      let keepAlive = KeepAlive.create(ws, pingInterval)
+      let keepAlive = KeepAlive.create(pingInterval)
 
-      test.equal(keepAlive._ws, ws)
       test.equal(keepAlive._pingInterval, pingInterval)
       test.notOk(keepAlive._pingTimer)
       test.end()
@@ -45,9 +43,9 @@ Test('KeepAlive', keepAliveTest => {
       let now = Moment()
       Moment.utc.returns(now)
 
-      let keepAlive = KeepAlive.create(ws, pingInterval)
+      let keepAlive = KeepAlive.create(pingInterval)
 
-      keepAlive.start()
+      keepAlive.start(ws)
       test.ok(keepAlive._pingTimer)
       test.notOk(ws.ping.calledOnce)
 
@@ -60,10 +58,10 @@ Test('KeepAlive', keepAliveTest => {
     startTest.test('do nothing if timer already started', test => {
       let timer = {}
 
-      let keepAlive = KeepAlive.create({}, 1000)
+      let keepAlive = KeepAlive.create(1000)
       keepAlive._pingTimer = timer
 
-      keepAlive.start()
+      keepAlive.start({})
       test.equal(keepAlive._pingTimer, timer)
 
       test.end()
@@ -79,9 +77,9 @@ Test('KeepAlive', keepAliveTest => {
 
       sandbox.stub(global, 'clearInterval')
 
-      let keepAlive = KeepAlive.create(ws, pingInterval)
+      let keepAlive = KeepAlive.create(pingInterval)
 
-      keepAlive.start()
+      keepAlive.start(ws)
       test.ok(keepAlive._pingTimer)
 
       keepAlive.stop()
@@ -93,11 +91,10 @@ Test('KeepAlive', keepAliveTest => {
 
     stopTest.test('do nothing if timer already stopped', test => {
       let pingInterval = 5000
-      let ws = { ping: sandbox.stub() }
 
       sandbox.stub(global, 'clearInterval')
 
-      let keepAlive = KeepAlive.create(ws, pingInterval)
+      let keepAlive = KeepAlive.create(pingInterval)
 
       keepAlive.stop()
       test.notOk(global.clearInterval.calledOnce)

@@ -4,6 +4,7 @@ const src = '../../src'
 const Test = require('tapes')(require('tape'))
 const Sinon = require('sinon')
 const P = require('bluebird')
+const EventEmitter = require('events')
 const Logger = require('@leveloneproject/central-services-shared').Logger
 const Db = require(`${src}/lib/db`)
 const Config = require(`${src}/lib/config`)
@@ -66,7 +67,11 @@ Test('Server', serverTest => {
       let startStub = sandbox.stub()
       startStub.returns(P.resolve())
 
-      let sidecar = { id: 'id', service: 'test-service', port: 1234, start: startStub }
+      let sidecar = new EventEmitter()
+      sidecar.id = 'id'
+      sidecar.service = 'test-service'
+      sidecar.port = 1234
+      sidecar.start = startStub
       Sidecar.create.returns(sidecar)
 
       require('../../src/server')
@@ -104,7 +109,9 @@ Test('Server', serverTest => {
       let startStub = sandbox.stub()
       startStub.returns(P.reject(error))
 
-      Sidecar.create.returns({ start: startStub })
+      let sidecar = new EventEmitter()
+      sidecar.start = startStub
+      Sidecar.create.returns(sidecar)
 
       require('../../src/server')
       .then(() => {
@@ -116,6 +123,32 @@ Test('Server', serverTest => {
         test.ok(Db.disconnect.calledOnce)
         test.equal(err, error)
         test.end()
+      })
+    })
+
+    setupTest.test('handle sidecar close event', test => {
+      Db.connect.returns(P.resolve({}))
+      Migrator.migrate.returns(P.resolve({}))
+
+      let startStub = sandbox.stub()
+      startStub.returns(P.resolve())
+
+      let sidecar = new EventEmitter()
+      sidecar.start = startStub
+      Sidecar.create.returns(sidecar)
+
+      let p = require('../../src/server')
+
+      p.then(() => {
+        try {
+          sidecar.emit('close')
+          test.fail('Should have thrown error')
+          test.end()
+        } catch (err) {
+          test.equal(err.message, 'Sidecar connection has closed, stopping server')
+          test.ok(Db.disconnect.calledOnce)
+          test.end()
+        }
       })
     })
 

@@ -1,13 +1,11 @@
 'use strict'
 
 const P = require('bluebird')
-const WS = require('ws')
 const Uuid = require('uuid4')
-const Moment = require('moment')
 const EventEmitter = require('events')
 const Logger = require('@leveloneproject/central-services-shared').Logger
 const Requests = require('./requests')
-const KeepAlive = require('./keep-alive')
+const WebSocket = require('./websocket')
 const Errors = require('../errors')
 const SymmetricCrypto = require('../crypto/symmetric')
 const AsymmetricCrypto = require('../crypto/asymmetric')
@@ -16,37 +14,54 @@ class KmsConnection extends EventEmitter {
   constructor (settings) {
     super()
 
-    this._url = settings.url || 'ws://localhost:8080/sidecar'
-    this._pingInterval = settings.pingInterval || 30000
-    this._timeout = settings.requestTimeout || 5000
-    this._connectTimeout = settings.connectTimeout || 30000
-    this._reconnectInterval = settings.reconnectInterval || 5000
+    const url = settings.url || 'ws://localhost:8080/sidecar'
+    const pingInterval = settings.pingInterval || 30000
+    const requestTimeout = settings.requestTimeout || 5000
+    const connectTimeout = settings.connectTimeout || 60000
+    const reconnectInterval = settings.reconnectInterval || 5000
 
-    this._pendingRequests = Requests.create({ timeout: this._timeout })
-
-    this._connected = false
-    this._connectPromise = null
-    this._connectTimer = null
-    this._reconnectTimer = null
+    this._ws = WebSocket.create({ url, pingInterval, connectTimeout, reconnectInterval })
+    this._pendingRequests = Requests.create({ timeout: requestTimeout })
   }
 
   connect () {
     return new P((resolve, reject) => {
-      if (this._connected) {
+      if (this._ws.isConnected()) {
         return resolve(this)
       }
 
-      this._connectPromise = { resolve, reject }
+      this._ws.removeAllListeners()
 
-      this._connectTimer = setTimeout(this._connectTimedOut.bind(this), this._connectTimeout)
+      const connectErrorListener = (err) => {
+        Logger.error('Error while connecting to KMS', err)
+        this._ws.removeAllListeners()
+        reject(err)
+      }
 
-      this._connect()
+      this._ws.once('error', connectErrorListener)
+
+      this._ws.once('open', () => {
+        // Remove listener only used for connect problems.
+        this._ws.removeListener('error', connectErrorListener)
+
+        this._ws.on('close', this._onWebSocketClose.bind(this))
+        this._ws.on('error', this._onWebSocketError.bind(this))
+        this._ws.on('message', this._onWebSocketMessage.bind(this))
+
+        resolve(this)
+      })
+
+      this._ws.connect()
     })
+  }
+
+  close () {
+    this._ws.close()
   }
 
   register (sidecarId, serviceName) {
     return P.try(() => {
-      if (!this._connected) {
+      if (!this._ws.isConnected()) {
         throw new Error('You must connect before registering')
       }
 
@@ -117,92 +132,11 @@ class KmsConnection extends EventEmitter {
     this._ws.send(this._buildJsonRpcMessage(requestId, { error }))
   }
 
-  _connect () {
-    const connectErrorListener = (err) => {
-      this._ws.removeAllListeners()
-
-      switch (err.code) {
-        case 'ECONNREFUSED':
-          Logger.info(`Error connecting to KMS, attempting to connect after sleeping ${this._reconnectInterval}ms`)
-
-          let self = this
-          this._reconnectTimer = setTimeout(() => {
-            self._connect()
-          }, this._reconnectInterval)
-          break
-        default:
-          this._clearConnectionTimers()
-          this._connectError(err)
-      }
-    }
-
-    // Create the websocket, and wait for either an open or error event to complete Promise.
-    this._ws = new WS(this._url, {
-      perMessageDeflate: false
-    })
-
-    this._ws.once('open', () => {
-      this._connected = true
-
-      this._clearConnectionTimers()
-
-      // Remove listener only used for connect problems.
-      this._ws.removeListener('error', connectErrorListener)
-
-      // Attach the regular event listeners.
-      this._ws.on('close', this._wsOnClose.bind(this))
-      this._ws.on('error', this._wsOnError.bind(this))
-      this._ws.on('message', this._wsOnMessage.bind(this))
-
-      // Setup ping/pong.
-      this._ws.on('ping', this._wsOnPing.bind(this))
-      this._ws.on('pong', this._wsOnPong.bind(this))
-
-      this._keepAlive = KeepAlive.create(this._ws, this._pingInterval)
-      this._keepAlive.start()
-
-      this._connectSuccessful(this)
-    })
-
-    this._ws.once('error', connectErrorListener)
-  }
-
-  _connectTimedOut () {
-    this._ws.removeAllListeners()
-    this._clearConnectionTimers()
-    this._connectError(new Error(`Unable to connect to KMS within ${this._connectTimeout}ms`))
-  }
-
-  _connectError (err) {
-    this._connectPromise.reject(err)
-    this._connectPromise = null
-  }
-
-  _connectSuccessful (obj) {
-    this._connectPromise.resolve(obj)
-    this._connectPromise = null
-  }
-
-  _clearConnectionTimers () {
-    clearTimeout(this._connectTimer)
-    this._connectTimer = null
-
-    clearTimeout(this._reconnectTimer)
-    this._reconnectTimer = null
-  }
-
   _send ({ id, method, params }) {
     if (!id) {
       id = Uuid()
     }
-    let message = this._buildJsonRpcMessage(id, { method, params })
-    Logger.info(message)
-    this._ws.send(message)
-  }
-
-  _cleanup () {
-    Logger.info('Cleaning up KMS connection')
-    this._keepAlive.stop()
+    this._ws.send(this._buildJsonRpcMessage(id, { method, params }))
   }
 
   _isJsonRpc (data) {
@@ -220,17 +154,7 @@ class KmsConnection extends EventEmitter {
   }
 
   // Websocket event handlers
-  _wsOnPing (data) {
-    this._ws.pong(data)
-  }
-
-  _wsOnPong (data) {
-    const timestamp = Moment(JSON.parse(data).timestamp)
-    const elapsed = Moment.utc().diff(timestamp)
-    Logger.info(`Received pong, elapsed ${elapsed}ms`)
-  }
-
-  _wsOnMessage (data, flags) {
+  _onWebSocketMessage (data) {
     let parsed = JSON.parse(data)
 
     if (this._isJsonRpc(parsed)) {
@@ -261,14 +185,18 @@ class KmsConnection extends EventEmitter {
     }
   }
 
-  _wsOnError (err) {
-    Logger.error('Error on KMS websocket connection', err)
-    this._cleanup()
+  _onWebSocketError (err) {
+    Logger.error('Error on WebSocket connection', err)
+
+    const canReconnect = (err.code === 'ECONNREFUSED')
+    this.emit('connectionClose', canReconnect)
   }
 
-  _wsOnClose (code, reason) {
-    Logger.info(`KMS websocket connection closed: ${code} - ${reason}`)
-    this._cleanup()
+  _onWebSocketClose (code, reason) {
+    Logger.error(`WebSocket connection closed: ${code} - ${reason}`)
+
+    const canReconnect = (code !== 1000)
+    this.emit('connectionClose', canReconnect)
   }
 }
 

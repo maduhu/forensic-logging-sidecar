@@ -9,6 +9,10 @@ const Package = require('../package')
 
 const startSidecar = () => {
   const sidecar = Sidecar.create(buildSidecarSettings())
+  sidecar.on('close', () => {
+    cleanup()
+    throw new Error('Sidecar connection has closed, stopping server')
+  })
 
   return Migrator.migrate()
     .then(() => Db.connect(Config.DATABASE_URI))

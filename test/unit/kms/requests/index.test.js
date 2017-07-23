@@ -37,14 +37,6 @@ Test('KMS Requests', kmsReqsTest => {
       test.end()
     })
 
-    createTest.test('use default property values', test => {
-      let reqs = KmsRequests.create()
-
-      test.equal(reqs._timeout, 5000)
-      test.deepEqual(reqs._existing, {})
-      test.end()
-    })
-
     createTest.end()
   })
 
@@ -83,7 +75,7 @@ Test('KMS Requests', kmsReqsTest => {
       KmsRequest.create.returns(req)
 
       let funcStub = sandbox.stub()
-      let requests = KmsRequests.create()
+      let requests = KmsRequests.create({ timeout: 1000 })
 
       requests.start(funcStub)
       test.ok(requests._existing[id])
@@ -101,7 +93,7 @@ Test('KMS Requests', kmsReqsTest => {
     existsTest.test('return true if request id exists', test => {
       let id = 'id1'
 
-      let requests = KmsRequests.create()
+      let requests = KmsRequests.create({ timeout: 1000 })
       requests._existing[id] = {}
 
       test.ok(requests.exists(id))
@@ -109,7 +101,7 @@ Test('KMS Requests', kmsReqsTest => {
     })
 
     existsTest.test('return false if request id doesn\'t exist', test => {
-      let requests = KmsRequests.create()
+      let requests = KmsRequests.create({ timeout: 1000 })
       requests._existing['id1'] = {}
 
       test.notOk(requests.exists('id2'))
@@ -124,7 +116,7 @@ Test('KMS Requests', kmsReqsTest => {
       let id = 'id1'
       let resolveStub = sandbox.stub()
 
-      let requests = KmsRequests.create()
+      let requests = KmsRequests.create({ timeout: 1000 })
       requests._existing[id] = { resolve: resolveStub }
 
       let value = 'val'
@@ -135,7 +127,7 @@ Test('KMS Requests', kmsReqsTest => {
     })
 
     completeTest.test('throw error if request id doesn\'t exist', test => {
-      let requests = KmsRequests.create()
+      let requests = KmsRequests.create({ timeout: 1000 })
       requests._existing['id1'] = { }
 
       try {

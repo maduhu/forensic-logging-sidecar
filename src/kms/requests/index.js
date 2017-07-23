@@ -5,8 +5,8 @@ const Request = require('./request')
 const Errors = require('../../errors')
 
 class Requests {
-  constructor (opts) {
-    this._timeout = opts.timeout || 5000
+  constructor (settings) {
+    this._timeout = settings.timeout
 
     this._existing = {}
   }
@@ -46,6 +46,6 @@ class Requests {
   }
 }
 
-exports.create = (opts) => {
-  return new Requests(opts || {})
+exports.create = (settings) => {
+  return new Requests(settings)
 }

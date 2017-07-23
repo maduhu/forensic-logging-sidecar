@@ -34,16 +34,16 @@ Test('SocketListener', socketListenerTest => {
 
       Net.createServer.returns(socket)
 
-      let eventSocket = SocketListener.create()
-      test.notOk(eventSocket._bound)
+      let socketListener = SocketListener.create()
+      test.notOk(socketListener._bound)
 
-      let listenPromise = eventSocket.listen(port, hostname)
+      let listenPromise = socketListener.listen(port, hostname)
 
       socket.emit('listening')
 
       listenPromise
         .then(() => {
-          test.ok(eventSocket._bound)
+          test.ok(socketListener._bound)
           test.ok(socket.listen.calledOnce)
           test.ok(socket.listen.calledWith(port, hostname))
           test.end()
@@ -63,15 +63,15 @@ Test('SocketListener', socketListenerTest => {
 
       let closeSpy = sandbox.spy()
 
-      let eventSocket = SocketListener.create()
-      eventSocket._bound = true
-      eventSocket.on('close', closeSpy)
+      let socketListener = SocketListener.create()
+      socketListener._bound = true
+      socketListener.on('close', closeSpy)
 
-      eventSocket.close()
+      socketListener.close()
 
       test.ok(closeSpy.called)
       test.ok(socket.close.calledOnce)
-      test.notOk(eventSocket._bound)
+      test.notOk(socketListener._bound)
       test.end()
     })
 
@@ -81,17 +81,87 @@ Test('SocketListener', socketListenerTest => {
 
       Net.createServer.returns(socket)
 
-      let eventSocket = SocketListener.create()
-      eventSocket._bound = false
+      let socketListener = SocketListener.create()
+      socketListener._bound = false
 
-      eventSocket.close()
+      socketListener.close()
 
       test.notOk(socket.close.called)
-      test.notOk(eventSocket._bound)
+      test.notOk(socketListener._bound)
       test.end()
     })
 
     closeTest.end()
+  })
+
+  socketListenerTest.test('pause should', pauseTest => {
+    pauseTest.test('set paused flag to true', test => {
+      let socket = new EventEmitter()
+
+      Net.createServer.returns(socket)
+
+      let socketListener = SocketListener.create()
+      test.notOk(socketListener._paused)
+
+      socketListener.pause()
+      test.ok(socketListener._paused)
+      test.end()
+    })
+
+    pauseTest.end()
+  })
+
+  socketListenerTest.test('restart should', restartTest => {
+    restartTest.test('emit message events for all queued messages and set paused to false', test => {
+      let messageSpy = sandbox.spy()
+
+      let socket = new EventEmitter()
+
+      Net.createServer.returns(socket)
+
+      let socketListener = SocketListener.create()
+      socketListener.on('message', messageSpy)
+
+      socketListener.pause()
+      test.ok(socketListener._paused)
+
+      let message = 'This is a test'
+      socketListener._queuedMessages.push(message)
+
+      socketListener.restart()
+
+      test.notOk(socketListener._paused)
+      test.ok(messageSpy.calledOnce)
+      test.ok(messageSpy.calledWith(message))
+      test.equal(socketListener._queuedMessages.length, 0)
+
+      test.end()
+    })
+
+    restartTest.test('do nothing if not paused', test => {
+      let messageSpy = sandbox.spy()
+
+      let socket = new EventEmitter()
+
+      Net.createServer.returns(socket)
+
+      let socketListener = SocketListener.create()
+      socketListener.on('message', messageSpy)
+
+      socketListener._queuedMessages.push('This is a test')
+
+      test.notOk(socketListener._paused)
+
+      socketListener.restart()
+
+      test.notOk(socketListener._paused)
+      test.notOk(messageSpy.called)
+      test.equal(socketListener._queuedMessages.length, 1)
+
+      test.end()
+    })
+
+    restartTest.end()
   })
 
   socketListenerTest.test('receiving server close should', serverCloseTest => {
@@ -104,15 +174,15 @@ Test('SocketListener', socketListenerTest => {
 
       let closeSpy = sandbox.spy()
 
-      let eventSocket = SocketListener.create()
-      eventSocket._bound = true
-      eventSocket.on('close', closeSpy)
+      let socketListener = SocketListener.create()
+      socketListener._bound = true
+      socketListener.on('close', closeSpy)
 
       socket.emit('close')
 
       test.ok(closeSpy.called)
       test.ok(socket.close.calledOnce)
-      test.notOk(eventSocket._bound)
+      test.notOk(socketListener._bound)
       test.end()
     })
 
@@ -128,8 +198,8 @@ Test('SocketListener', socketListenerTest => {
 
       let error = new Error('bad stuff in server')
 
-      let eventSocket = SocketListener.create()
-      eventSocket.on('error', errorSpy)
+      let socketListener = SocketListener.create()
+      socketListener.on('error', errorSpy)
 
       socket.emit('error', error)
 
@@ -153,11 +223,11 @@ Test('SocketListener', socketListenerTest => {
       let tcpConnection = new EventEmitter()
       TcpConnection.create.returns(tcpConnection)
 
-      let eventSocket = SocketListener.create()
-      test.equal(eventSocket._connections.length, 0)
+      let socketListener = SocketListener.create()
+      test.equal(socketListener._connections.length, 0)
 
       socket.emit('connection', conn)
-      test.equal(eventSocket._connections.length, 1)
+      test.equal(socketListener._connections.length, 1)
 
       test.ok(TcpConnection.create.calledOnce)
       test.ok(TcpConnection.create.calledWith(conn))
@@ -181,8 +251,8 @@ Test('SocketListener', socketListenerTest => {
 
       let messageSpy = sandbox.spy()
 
-      let eventSocket = SocketListener.create()
-      eventSocket.on('message', messageSpy)
+      let socketListener = SocketListener.create()
+      socketListener.on('message', messageSpy)
 
       socket.emit('connection', conn)
 
@@ -193,6 +263,39 @@ Test('SocketListener', socketListenerTest => {
 
       test.ok(messageSpy.called)
       test.ok(messageSpy.calledWith(message))
+      test.end()
+    })
+
+    connMessageTest.test('queue message if SocketListener is paused', test => {
+      let socket = new EventEmitter()
+      Net.createServer.returns(socket)
+
+      let conn = sandbox.stub()
+      conn.remoteAddress = 'localhost'
+      conn.remotePort = 1111
+
+      let tcpConnection = new EventEmitter()
+      TcpConnection.create.returns(tcpConnection)
+
+      let messageSpy = sandbox.spy()
+
+      let socketListener = SocketListener.create()
+      socketListener.on('message', messageSpy)
+
+      socket.emit('connection', conn)
+
+      let message = JSON.stringify({ id: '1ab042bd-e098-4d96-ae8b-e07aefd04ca4', serviceName: 'service' })
+      let receiveBuffer = Fixtures.writeMessageToBuffer(message)
+
+      test.equal(socketListener._queuedMessages.length, 0)
+
+      socketListener.pause()
+
+      tcpConnection.emit('message', receiveBuffer)
+
+      test.notOk(messageSpy.called)
+      test.equal(socketListener._queuedMessages.length, 1)
+      test.equal(socketListener._queuedMessages[0], message)
       test.end()
     })
 
@@ -213,14 +316,14 @@ Test('SocketListener', socketListenerTest => {
 
       let disconnectSpy = sandbox.spy()
 
-      let eventSocket = SocketListener.create()
-      eventSocket.on('disconnect', disconnectSpy)
+      let socketListener = SocketListener.create()
+      socketListener.on('disconnect', disconnectSpy)
 
       socket.emit('connection', conn)
-      test.equal(eventSocket._connections.length, 1)
+      test.equal(socketListener._connections.length, 1)
 
       tcpConnection.emit('end')
-      test.equal(eventSocket._connections.length, 0)
+      test.equal(socketListener._connections.length, 0)
 
       test.ok(disconnectSpy.called)
       test.ok(disconnectSpy.calledWith(tcpConnection))
@@ -231,7 +334,7 @@ Test('SocketListener', socketListenerTest => {
   })
 
   socketListenerTest.test('receiving TcpConnection error should', connErrorTest => {
-    connErrorTest.test('emit error event', test => {
+    connErrorTest.test('remove connection from list and emit disconnect event', test => {
       let socket = new EventEmitter()
       Net.createServer.returns(socket)
 
@@ -242,18 +345,19 @@ Test('SocketListener', socketListenerTest => {
       let tcpConnection = new EventEmitter()
       TcpConnection.create.returns(tcpConnection)
 
-      let errorSpy = sandbox.spy()
-      let error = new Error('bad stuff in server')
+      let disconnectSpy = sandbox.spy()
 
-      let eventSocket = SocketListener.create()
-      eventSocket.on('error', errorSpy)
+      let socketListener = SocketListener.create()
+      socketListener.on('disconnect', disconnectSpy)
 
       socket.emit('connection', conn)
+      test.equal(socketListener._connections.length, 1)
 
-      tcpConnection.emit('error', error)
+      tcpConnection.emit('error', new Error())
+      test.equal(socketListener._connections.length, 0)
 
-      test.ok(errorSpy.called)
-      test.ok(errorSpy.calledWith(error))
+      test.ok(disconnectSpy.called)
+      test.ok(disconnectSpy.calledWith(tcpConnection))
       test.end()
     })
 

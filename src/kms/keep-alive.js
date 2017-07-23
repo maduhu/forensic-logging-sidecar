@@ -3,15 +3,16 @@
 const Moment = require('moment')
 
 class KeepAlive {
-  constructor (websocket, pingInterval) {
-    this._ws = websocket
+  constructor (pingInterval) {
     this._pingTimer = null
     this._pingInterval = pingInterval
   }
 
-  start () {
+  start (ws) {
     if (!this._pingTimer) {
-      this._pingTimer = setInterval(this._ping.bind(this), this._pingInterval)
+      this._pingTimer = setInterval(() => {
+        ws.ping(JSON.stringify({ timestamp: Moment.utc().toISOString() }))
+      }, this._pingInterval)
     }
   }
 
@@ -21,12 +22,8 @@ class KeepAlive {
       this._pingTimer = null
     }
   }
-
-  _ping () {
-    this._ws.ping(JSON.stringify({ timestamp: Moment.utc().toISOString() }))
-  }
 }
 
-exports.create = (websocket, pingInterval) => {
-  return new KeepAlive(websocket, pingInterval)
+exports.create = (pingInterval) => {
+  return new KeepAlive(pingInterval)
 }
