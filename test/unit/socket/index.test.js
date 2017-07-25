@@ -54,24 +54,37 @@ Test('SocketListener', socketListenerTest => {
   })
 
   socketListenerTest.test('close should', closeTest => {
-    closeTest.test('call close method on internal socket and emit close event', test => {
+    closeTest.test('call close method on internal socket, close open connections and emit close event', test => {
       let socket = new EventEmitter()
       socket.close = sandbox.stub()
       socket.close.callsArg(0)
 
       Net.createServer.returns(socket)
 
+      let conn = sandbox.stub()
+      conn.remoteAddress = 'localhost'
+      conn.remotePort = 1111
+
+      let tcpConnection = new EventEmitter()
+      tcpConnection.close = sandbox.stub()
+      TcpConnection.create.returns(tcpConnection)
+
       let closeSpy = sandbox.spy()
 
       let socketListener = SocketListener.create()
       socketListener._bound = true
+
+      socket.emit('connection', conn)
+
       socketListener.on('close', closeSpy)
 
       socketListener.close()
 
       test.ok(closeSpy.called)
       test.ok(socket.close.calledOnce)
+      test.ok(tcpConnection.close.calledOnce)
       test.notOk(socketListener._bound)
+      test.equal(socketListener._connections.length, 0)
       test.end()
     })
 
@@ -95,73 +108,90 @@ Test('SocketListener', socketListenerTest => {
   })
 
   socketListenerTest.test('pause should', pauseTest => {
-    pauseTest.test('set paused flag to true', test => {
+    pauseTest.test('set paused flag to true and pause any connections', test => {
       let socket = new EventEmitter()
 
       Net.createServer.returns(socket)
 
+      let conn = sandbox.stub()
+      conn.remoteAddress = 'localhost'
+      conn.remotePort = 1111
+
+      let tcpConnection = new EventEmitter()
+      tcpConnection.pause = sandbox.stub()
+      TcpConnection.create.returns(tcpConnection)
+
       let socketListener = SocketListener.create()
       test.notOk(socketListener._paused)
 
+      socket.emit('connection', conn)
+
       socketListener.pause()
       test.ok(socketListener._paused)
+      test.ok(tcpConnection.pause.calledOnce)
       test.end()
     })
 
     pauseTest.end()
   })
 
-  socketListenerTest.test('restart should', restartTest => {
-    restartTest.test('emit message events for all queued messages and set paused to false', test => {
-      let messageSpy = sandbox.spy()
-
+  socketListenerTest.test('resume should', resumeTest => {
+    resumeTest.test('set paused flag to false and resume any connections', test => {
       let socket = new EventEmitter()
 
       Net.createServer.returns(socket)
 
+      let conn = sandbox.stub()
+      conn.remoteAddress = 'localhost'
+      conn.remotePort = 1111
+
+      let tcpConnection = new EventEmitter()
+      tcpConnection.pause = sandbox.stub()
+      tcpConnection.resume = sandbox.stub()
+      TcpConnection.create.returns(tcpConnection)
+
       let socketListener = SocketListener.create()
-      socketListener.on('message', messageSpy)
+
+      socket.emit('connection', conn)
 
       socketListener.pause()
       test.ok(socketListener._paused)
+      test.ok(tcpConnection.pause.calledOnce)
 
-      let message = 'This is a test'
-      socketListener._queuedMessages.push(message)
-
-      socketListener.restart()
+      socketListener.resume()
 
       test.notOk(socketListener._paused)
-      test.ok(messageSpy.calledOnce)
-      test.ok(messageSpy.calledWith(message))
-      test.equal(socketListener._queuedMessages.length, 0)
-
+      test.ok(tcpConnection.resume.calledOnce)
       test.end()
     })
 
-    restartTest.test('do nothing if not paused', test => {
-      let messageSpy = sandbox.spy()
-
+    resumeTest.test('do nothing if not paused', test => {
       let socket = new EventEmitter()
 
       Net.createServer.returns(socket)
 
+      let conn = sandbox.stub()
+      conn.remoteAddress = 'localhost'
+      conn.remotePort = 1111
+
+      let tcpConnection = new EventEmitter()
+      tcpConnection.resume = sandbox.stub()
+      TcpConnection.create.returns(tcpConnection)
+
       let socketListener = SocketListener.create()
-      socketListener.on('message', messageSpy)
 
-      socketListener._queuedMessages.push('This is a test')
-
-      test.notOk(socketListener._paused)
-
-      socketListener.restart()
+      socket.emit('connection', conn)
 
       test.notOk(socketListener._paused)
-      test.notOk(messageSpy.called)
-      test.equal(socketListener._queuedMessages.length, 1)
 
+      socketListener.resume()
+
+      test.notOk(socketListener._paused)
+      test.notOk(tcpConnection.resume.called)
       test.end()
     })
 
-    restartTest.end()
+    resumeTest.end()
   })
 
   socketListenerTest.test('receiving server close should', serverCloseTest => {
@@ -263,39 +293,6 @@ Test('SocketListener', socketListenerTest => {
 
       test.ok(messageSpy.called)
       test.ok(messageSpy.calledWith(message))
-      test.end()
-    })
-
-    connMessageTest.test('queue message if SocketListener is paused', test => {
-      let socket = new EventEmitter()
-      Net.createServer.returns(socket)
-
-      let conn = sandbox.stub()
-      conn.remoteAddress = 'localhost'
-      conn.remotePort = 1111
-
-      let tcpConnection = new EventEmitter()
-      TcpConnection.create.returns(tcpConnection)
-
-      let messageSpy = sandbox.spy()
-
-      let socketListener = SocketListener.create()
-      socketListener.on('message', messageSpy)
-
-      socket.emit('connection', conn)
-
-      let message = JSON.stringify({ id: '1ab042bd-e098-4d96-ae8b-e07aefd04ca4', serviceName: 'service' })
-      let receiveBuffer = Fixtures.writeMessageToBuffer(message)
-
-      test.equal(socketListener._queuedMessages.length, 0)
-
-      socketListener.pause()
-
-      tcpConnection.emit('message', receiveBuffer)
-
-      test.notOk(messageSpy.called)
-      test.equal(socketListener._queuedMessages.length, 1)
-      test.equal(socketListener._queuedMessages[0], message)
       test.end()
     })
 

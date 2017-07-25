@@ -20,6 +20,51 @@ Test('TcpConnection', tcpConnTest => {
     t.end()
   })
 
+  tcpConnTest.test('close should', closeTest => {
+    closeTest.test('call end method on socket', test => {
+      let socket = new EventEmitter()
+      socket.end = sandbox.stub()
+
+      let conn = TcpConnection.create(socket)
+      conn.close()
+
+      test.ok(socket.end.calledOnce)
+      test.end()
+    })
+
+    closeTest.end()
+  })
+
+  tcpConnTest.test('pause should', pauseTest => {
+    pauseTest.test('call pause method on socket', test => {
+      let socket = new EventEmitter()
+      socket.pause = sandbox.stub()
+
+      let conn = TcpConnection.create(socket)
+      conn.pause()
+
+      test.ok(socket.pause.calledOnce)
+      test.end()
+    })
+
+    pauseTest.end()
+  })
+
+  tcpConnTest.test('resume should', resumeTest => {
+    resumeTest.test('call resume method on socket', test => {
+      let socket = new EventEmitter()
+      socket.resume = sandbox.stub()
+
+      let conn = TcpConnection.create(socket)
+      conn.resume()
+
+      test.ok(socket.resume.calledOnce)
+      test.end()
+    })
+
+    resumeTest.end()
+  })
+
   tcpConnTest.test('receiving socket end should', receiveCloseTest => {
     receiveCloseTest.test('emit end event', test => {
       let socket = new EventEmitter()

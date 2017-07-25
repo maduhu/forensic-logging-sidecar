@@ -13,7 +13,6 @@ class SocketListener extends EventEmitter {
     self._bound = false
     self._paused = false
     self._connections = []
-    self._queuedMessages = []
 
     self._server = Net.createServer()
     self._server.on('connection', socket => {
@@ -31,7 +30,16 @@ class SocketListener extends EventEmitter {
   close () {
     if (this._bound) {
       this._bound = false
-      this._server.close(() => this.emit('close'))
+
+      this._connections.forEach(c => {
+        c.close()
+      })
+
+      this._connections.length = 0
+
+      this._server.close(() => {
+        this.emit('close')
+      })
     }
   }
 
@@ -47,22 +55,28 @@ class SocketListener extends EventEmitter {
   }
 
   pause () {
-    this._paused = true
-    return P.resolve()
+    return new P((resolve, reject) => {
+      this._paused = true
+
+      this._connections.forEach(c => {
+        c.pause()
+      })
+
+      resolve()
+    })
   }
 
-  restart () {
-    if (this._paused) {
-      return new P((resolve, reject) => {
+  resume () {
+    return new P((resolve, reject) => {
+      if (this._paused) {
         this._paused = false
-        this._queuedMessages.forEach(m => {
-          this.emit('message', m)
-        })
-        this._queuedMessages.length = 0
 
-        resolve()
-      })
-    }
+        this._connections.forEach(c => {
+          c.resume()
+        })
+      }
+      resolve()
+    })
   }
 
   _disconnectConnection (tcpConnection) {
@@ -71,12 +85,7 @@ class SocketListener extends EventEmitter {
   }
 
   _onConnectionMessage (msg) {
-    let message = msg.toString('utf8')
-    if (this._paused) {
-      this._queuedMessages.push(message)
-    } else {
-      this.emit('message', message)
-    }
+    this.emit('message', msg.toString('utf8'))
   }
 }
 

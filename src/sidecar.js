@@ -71,7 +71,7 @@ class Sidecar extends EventEmitter {
     return this._socketListener.pause()
       .then(() => this._saveSidecar())
       .then(() => this._connectToKms())
-      .then(() => this._socketListener.restart())
+      .then(() => this._socketListener.resume())
   }
 
   _onKmsInquiry (request) {

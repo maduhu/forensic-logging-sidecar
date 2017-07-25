@@ -26,6 +26,18 @@ class TcpConnection extends EventEmitter {
     self._socket.on('end', () => self.emit('end'))
     self._socket.on('error', (err) => self.emit('error', err))
   }
+
+  close () {
+    this._socket.end()
+  }
+
+  pause () {
+    this._socket.pause()
+  }
+
+  resume () {
+    this._socket.resume()
+  }
 }
 
 const appendToBuffer = (existing, data) => {

@@ -214,9 +214,9 @@ Test('Sidecar', sidecarTest => {
 
       BatchTracker.create.returns({ 'on': sandbox.stub() })
 
-      let restartPromise = P.resolve()
+      let resumePromise = P.resolve()
       let pausePromise = P.resolve()
-      let socketListener = { 'on': sandbox.stub(), listen: sandbox.stub(), pause: sandbox.stub().returns(pausePromise), restart: sandbox.stub().returns(restartPromise) }
+      let socketListener = { 'on': sandbox.stub(), listen: sandbox.stub(), pause: sandbox.stub().returns(pausePromise), resume: sandbox.stub().returns(resumePromise) }
       SocketListener.create.returns(socketListener)
 
       let reconnectCreatePromise = P.resolve()
@@ -249,9 +249,9 @@ Test('Sidecar', sidecarTest => {
                       storePromise
                         .then(() => {
                           test.ok(keyStore.store.calledWith(reconnectKeys))
-                          restartPromise
+                          resumePromise
                             .then(() => {
-                              test.ok(socketListener.restart.calledOnce)
+                              test.ok(socketListener.resume.calledOnce)
                               test.ok(Logger.info.calledWith(`Successfully reconnected to KMS as id ${reconnectId}`))
                               test.end()
                             })
@@ -296,11 +296,11 @@ Test('Sidecar', sidecarTest => {
 
       BatchTracker.create.returns({ 'on': sandbox.stub() })
 
-      let restartError = new Error('Bad error')
-      let restartPromise = P.reject(restartError)
+      let resumeError = new Error('Bad error')
+      let resumePromise = P.reject(resumeError)
       let socketCloseStub = sandbox.stub()
       let pausePromise = P.resolve()
-      let socketListener = { 'on': sandbox.stub(), listen: sandbox.stub(), pause: sandbox.stub().returns(pausePromise), close: socketCloseStub, restart: sandbox.stub().returns(restartPromise) }
+      let socketListener = { 'on': sandbox.stub(), listen: sandbox.stub(), pause: sandbox.stub().returns(pausePromise), close: socketCloseStub, resume: sandbox.stub().returns(resumePromise) }
       SocketListener.create.returns(socketListener)
 
       let reconnectCreatePromise = P.resolve()
@@ -335,13 +335,13 @@ Test('Sidecar', sidecarTest => {
                       storePromise
                         .then(() => {
                           test.ok(keyStore.store.calledWith(reconnectKeys))
-                          restartPromise
+                          resumePromise
                             .then(() => {
                               test.fail('Should have thrown error')
                               test.end()
                             })
                             .catch(err => {
-                              test.equal(err, restartError)
+                              test.equal(err, resumeError)
                               test.ok(Logger.error.calledWith('Error reconnecting to KMS, stopping sidecar', err))
                               test.ok(kmsConnection.close.calledOnce)
                               test.ok(socketCloseStub.calledOnce)
