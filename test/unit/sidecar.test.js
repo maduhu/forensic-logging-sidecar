@@ -65,7 +65,7 @@ Test('Sidecar', sidecarTest => {
       let batchTrackerOnStub = sandbox.stub()
       BatchTracker.create.returns({ 'on': batchTrackerOnStub })
 
-      let settings = { serviceName: 'test-service', kms: { url: 'ws://test.com', pingInterval: 30000, requestTimeout: 15000, connectTimeout: 9000, reconnectInterval: 2000 }, port: 1234, batchSize: 50, version: '1.2.3' }
+      let settings = { serviceName: 'test-service', kms: { url: 'ws://test.com', pingInterval: 30000, requestTimeout: 15000, connectTimeout: 9000, reconnectInterval: 2000 }, port: 1234, batchSize: 50, batchTimeInterval: 45000, version: '1.2.3' }
       let sidecar = Sidecar.create(settings)
 
       test.equal(sidecar.id, sidecarId)
@@ -82,7 +82,8 @@ Test('Sidecar', sidecarTest => {
       test.ok(SocketListener.create.calledOnce)
       test.ok(socketOnStub.calledWith('message'))
       test.ok(BatchTracker.create.calledWith(sandbox.match({
-        batchSize: settings.batchSize
+        batchSize: settings.batchSize,
+        batchTimeInterval: settings.batchTimeInterval
       })))
       test.ok(batchTrackerOnStub.calledWith('batchReady'))
       test.end()

@@ -33,7 +33,7 @@ class Sidecar extends EventEmitter {
     this._socketListener = SocketListener.create()
     this._socketListener.on('message', this._onSocketMessage.bind(this))
 
-    this._batchTracker = BatchTracker.create({ batchSize: settings.batchSize })
+    this._batchTracker = BatchTracker.create(settings)
     this._batchTracker.on('batchReady', this._onBatchReady.bind(this))
   }
 

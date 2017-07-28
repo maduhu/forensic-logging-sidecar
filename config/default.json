@@ -2,6 +2,7 @@
   "PORT": 5678,
   "SERVICE": "TestService",
   "BATCH_SIZE": 64,
+  "BATCH_TIME_INTERVAL": 300000,
   "KMS": {
     "URL": "ws://localhost:8080/sidecar",
     "PING_INTERVAL": 30000,

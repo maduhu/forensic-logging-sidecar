@@ -30,6 +30,7 @@ const buildSidecarSettings = () => {
     port: Config.PORT,
     serviceName: Config.SERVICE,
     batchSize: Config.BATCH_SIZE,
+    batchTimeInterval: Config.BATCH_TIME_INTERVAL,
     version: Package.version,
     kms: {
       url: Config.KMS.URL,

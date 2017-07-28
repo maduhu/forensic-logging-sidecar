@@ -19,8 +19,10 @@ Test('Server', serverTest => {
   let oldBatchSize
   let oldKmsConfig
   let oldDatabaseUri
+  let oldBatchTimeInterval
   let port = 1234
   let batchSize = 5
+  let batchTimeInterval = 30000
   let service = 'MyService'
   let kmsConfig = { 'URL': 'ws://test.com', 'PING_INTERVAL': 10000, 'REQUEST_TIMEOUT': 15000, 'CONNECT_TIMEOUT': 8000, 'RECONNECT_INTERVAL': 2000 }
   let databaseUri = 'some-database-uri'
@@ -38,12 +40,14 @@ Test('Server', serverTest => {
     oldService = Config.SERVICE
     oldBatchSize = Config.BATCH_SIZE
     oldDatabaseUri = Config.DATABASE_URI
+    oldBatchTimeInterval = Config.BATCH_TIME_INTERVAL
 
     Config.PORT = port
     Config.KMS = kmsConfig
     Config.SERVICE = service
     Config.BATCH_SIZE = batchSize
     Config.DATABASE_URI = databaseUri
+    Config.BATCH_TIME_INTERVAL = batchTimeInterval
 
     t.end()
   })
@@ -56,6 +60,7 @@ Test('Server', serverTest => {
     Config.PORT = oldPort
     Config.SERVICE = oldService
     Config.DATABASE_URI = oldDatabaseUri
+    Config.BATCH_TIME_INTERVAL = oldBatchTimeInterval
     t.end()
   })
 
@@ -92,7 +97,8 @@ Test('Server', serverTest => {
             reconnectInterval: kmsConfig.RECONNECT_INTERVAL
           },
           version: Package.version,
-          batchSize
+          batchSize,
+          batchTimeInterval
         })))
         test.ok(startStub.calledOnce)
         test.ok(Logger.info.calledWith(`Sidecar ${sidecar.id} for ${sidecar.service} connected to KMS and listening for messages on port ${sidecar.port}`))
