@@ -1,6 +1,6 @@
 {
   "name": "@leveloneproject/forensic-logging-sidecar",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Sidecar service to save forensic logs",
   "license": "CC-BY-SA-4.0",
   "repository": {
